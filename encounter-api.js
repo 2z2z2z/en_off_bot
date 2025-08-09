@@ -133,9 +133,21 @@ class EncounterAPI {
 
       console.log(`✅ Успешный ответ от API, статус: ${response.status}`);
 
+      const data = response.data;
+
+      // Если сервер вернул HTML (страница логина) вместо JSON — сессия истекла/нет авторизации
+      if (typeof data === 'string' && (data.includes('<html') || data.includes('<!DOCTYPE'))) {
+        throw new Error('Требуется авторизация (сессия истекла)');
+      }
+
+      // Если явно пришел Event=4 — не авторизован
+      if (data && typeof data === 'object' && data.Event === 4) {
+        throw new Error('Требуется авторизация');
+      }
+
       return {
         success: true,
-        data: response.data
+        data
       };
     } catch (error) {
       console.error('❌ Ошибка получения состояния игры:', error.message);

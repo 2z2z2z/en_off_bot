@@ -10,6 +10,9 @@ require('dotenv').config();
 // Токен Telegram бота из переменной окружения
 const BOT_TOKEN = process.env.BOT_TOKEN || '8239956764:AAH78W5Vvc47a_EhnL7XcLtRwVhmj8s5Q4Y';
 
+// Тестовый бот
+// const BOT_TOKEN = process.env.BOT_TOKEN || '7729425234:AAFp-r5wN8fOANx5DVU1xJ94L5sW0rAjxeU';
+
 // Создаем экземпляр бота
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
@@ -59,7 +62,8 @@ function createMainKeyboard() {
   return {
     reply_markup: {
       keyboard: [
-        ['🔧 Сменить настройки'],
+        ['Задание'],
+        ['Сектора'],
         ['📊 Статус очереди', '🔗 Сменить игру'],
         ['👤 Сменить авторизацию']
       ],
@@ -67,6 +71,69 @@ function createMainKeyboard() {
       one_time_keyboard: false
     }
   };
+}
+
+// Удалён форматтер HTML, показ оригинального текста задания TaskText
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Форматирование секунд в д/ч/м/с без нулевых единиц
+function formatRemain(seconds) {
+  const total = Number(seconds) || 0;
+  if (total <= 0) return '';
+  let s = Math.floor(total);
+  const days = Math.floor(s / 86400); s %= 86400;
+  const hours = Math.floor(s / 3600); s %= 3600;
+  const minutes = Math.floor(s / 60); s %= 60;
+  const parts = [];
+  if (days > 0) parts.push(`${days}д`);
+  if (hours > 0) parts.push(`${hours}ч`);
+  if (minutes > 0) parts.push(`${minutes}м`);
+  if (s > 0) parts.push(`${s}с`);
+  return parts.join(' ');
+}
+
+// Попытка извлечь человекочитаемый текст ответа сектора из разных возможных структур
+function extractSectorAnswerText(rawAnswer) {
+  if (rawAnswer == null) return '';
+  if (typeof rawAnswer === 'string') return rawAnswer.trim();
+  if (typeof rawAnswer === 'number' || typeof rawAnswer === 'boolean') return String(rawAnswer);
+  if (Array.isArray(rawAnswer)) {
+    const parts = rawAnswer
+      .map(item => extractSectorAnswerText(item))
+      .filter(v => v && v.trim().length > 0);
+    return parts.join(', ');
+  }
+  // Объект: пробуем типичные поля
+  const candidates = [
+    rawAnswer.Value,
+    rawAnswer.Text,
+    rawAnswer.Answer,
+    rawAnswer.Display,
+    rawAnswer.StringValue,
+    rawAnswer.Name,
+    rawAnswer.Title,
+    rawAnswer.Content
+  ].filter(v => v != null);
+  if (candidates.length > 0) {
+    const first = candidates.find(v => typeof v === 'string') ?? candidates[0];
+    return extractSectorAnswerText(first);
+  }
+  // Последняя попытка: сериализуем простые плоские значения
+  try {
+    const flat = Object.values(rawAnswer)
+      .map(v => (typeof v === 'string' || typeof v === 'number' ? String(v) : ''))
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    return flat;
+  } catch (_) {
+    return '';
+  }
 }
 
 // Получение информации о пользователе
@@ -695,15 +762,240 @@ bot.on('message', async (msg) => {
       
     case STATES.READY:
       // Обработка кнопок главного меню
-      if (text === '🔧 Сменить настройки') {
-        bot.sendMessage(chatId, 
-          `Текущие настройки:\n` +
-          `👤 Логин: ${user.login}\n` +
-          `🌐 Домен: ${user.domain}\n` +
-          `🎯 ID игры: ${user.gameId}\n\n` +
-          `Выберите что хотите изменить:`,
-          createMainKeyboard()
-        );
+      if (text === 'Задание') {
+        // Получаем текст задания текущего уровня
+        const waitMsg = await bot.sendMessage(chatId, '🔄 Получаю задание текущего уровня...');
+        try {
+          const api = new EncounterAPI(user.domain);
+
+          // Обеспечиваем актуальную авторизацию
+          if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
+            const auth = await api.authenticate(user.login, user.password);
+            if (!auth.success) {
+              throw new Error(auth.message || 'Не удалось авторизоваться');
+            }
+            user.authCookies = auth.cookies;
+            await saveUserData();
+          }
+
+          let gameState;
+          try {
+            gameState = await api.getGameState(user.gameId, user.authCookies);
+          } catch (e) {
+            const msg = String(e.message || '').toLowerCase();
+            if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
+              const reauth = await api.authenticate(user.login, user.password);
+              if (!reauth.success) throw new Error(reauth.message || 'Не удалось авторизоваться');
+              user.authCookies = reauth.cookies;
+              await saveUserData();
+              gameState = await api.getGameState(user.gameId, user.authCookies);
+            } else {
+              throw e;
+            }
+          }
+
+          if (!gameState || !gameState.success) {
+            throw new Error('Не удалось получить состояние игры');
+          }
+
+          const model = gameState.data;
+          if (model.Event !== 0) {
+            // Если уровень изменился — попробуем ещё раз получить актуальное состояние
+            if (model.Event === 16) {
+              gameState = await api.getGameState(user.gameId, user.authCookies);
+              if (!gameState.success || gameState.data.Event !== 0) {
+                await sendOrUpdateMessage(chatId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg.message_id);
+                break;
+              }
+            } else {
+              await sendOrUpdateMessage(chatId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg.message_id);
+              break;
+            }
+          }
+
+          const level = model.Level;
+          if (!level) {
+            await sendOrUpdateMessage(chatId, '⚠️ Активный уровень не найден.', waitMsg.message_id);
+            break;
+          }
+
+          const tasks = level.Tasks;
+          let parts = [];
+          if (Array.isArray(tasks)) {
+            parts = tasks
+              .map(t => escapeHtml(String(t?.TaskText || '').trim()))
+              .filter(p => p.length > 0);
+          } else if (tasks && typeof tasks === 'object') {
+            const single = escapeHtml(String(tasks.TaskText || '').trim());
+            if (single.length > 0) parts = [single];
+          }
+
+          const header = `<b>📜 Задание уровня №${level.Number}${level.Name ? ` — ${escapeHtml(level.Name)}` : ''}</b>`;
+          const timeoutRemain = formatRemain(level.TimeoutSecondsRemain);
+          const timeoutLine = timeoutRemain ? `\n<i>До автоперехода осталось: ${timeoutRemain}</i>` : '';
+          // Текст задания как цитата
+          const body = parts.length > 0 
+            ? parts.map(p => `<blockquote>${p}</blockquote>`).join('\n\n') 
+            : '<blockquote>Текст задания недоступен.</blockquote>';
+
+          // Формируем блок подсказок
+          let helpsBlock = '';
+          const helps = Array.isArray(level.Helps) ? level.Helps : [];
+          if (helps.length > 0) {
+            // Функция форматирования секунд в д/ч/м/с без нулевых единиц
+            const formatRemain = (seconds) => {
+              const total = Number(seconds) || 0;
+              if (total <= 0) return '';
+              let s = Math.floor(total);
+              const days = Math.floor(s / 86400); s %= 86400;
+              const hours = Math.floor(s / 3600); s %= 3600;
+              const minutes = Math.floor(s / 60); s %= 60;
+              const parts = [];
+              if (days > 0) parts.push(`${days}д`);
+              if (hours > 0) parts.push(`${hours}ч`);
+              if (minutes > 0) parts.push(`${minutes}м`);
+              if (s > 0) parts.push(`${s}с`);
+              return parts.join(' ');
+            };
+
+            const helpSections = helps.map(h => {
+              const number = h?.Number ?? '';
+              const helpText = escapeHtml(h?.HelpText || '');
+              const remainStr = formatRemain(h?.RemainSeconds);
+              const remainLine = remainStr ? `\n<i>До подсказки осталось: ${remainStr}</i>` : '';
+              return `<b>💡 Подсказка ${number}</b>\n<blockquote>${helpText}</blockquote>${remainLine}`;
+            });
+            helpsBlock = `\n\n${helpSections.join('\n\n')}`;
+          }
+
+          const fullHtml = `${header}${timeoutLine}\n\n${body}${helpsBlock}`;
+
+          // Отправляем с форматированием HTML
+          if (fullHtml.length <= 4000) {
+            await bot.editMessageText(fullHtml, {
+              chat_id: chatId,
+              message_id: waitMsg.message_id,
+              parse_mode: 'HTML',
+              disable_web_page_preview: true
+            });
+          } else {
+            await bot.editMessageText(header, {
+              chat_id: chatId,
+              message_id: waitMsg.message_id,
+              parse_mode: 'HTML',
+              disable_web_page_preview: true
+            });
+            // Отправляем оставшуюся часть кусками
+            const rest = `\n\n${body}${helpsBlock}`;
+            for (let i = 0; i < rest.length; i += 4000) {
+              await bot.sendMessage(chatId, rest.slice(i, i + 4000), { parse_mode: 'HTML', disable_web_page_preview: true });
+            }
+          }
+        } catch (error) {
+          await sendOrUpdateMessage(chatId, `❌ Не удалось получить задание: ${error.message}`, waitMsg.message_id);
+        }
+      } else if (text === 'Сектора') {
+        const waitMsg = await bot.sendMessage(chatId, '🔄 Получаю список секторов...');
+        try {
+          const api = new EncounterAPI(user.domain);
+
+          if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
+            const auth = await api.authenticate(user.login, user.password);
+            if (!auth.success) throw new Error(auth.message || 'Не удалось авторизоваться');
+            user.authCookies = auth.cookies;
+            await saveUserData();
+          }
+
+          let gameState;
+          try {
+            gameState = await api.getGameState(user.gameId, user.authCookies);
+          } catch (e) {
+            const msg = String(e.message || '').toLowerCase();
+            if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
+              const reauth = await api.authenticate(user.login, user.password);
+              if (!reauth.success) throw new Error(reauth.message || 'Не удалось авторизоваться');
+              user.authCookies = reauth.cookies;
+              await saveUserData();
+              gameState = await api.getGameState(user.gameId, user.authCookies);
+            } else {
+              throw e;
+            }
+          }
+
+          if (!gameState || !gameState.success) throw new Error('Не удалось получить состояние игры');
+          let model = gameState.data;
+          if (model.Event !== 0) {
+            if (model.Event === 16) {
+              gameState = await api.getGameState(user.gameId, user.authCookies);
+              if (!gameState.success || gameState.data.Event !== 0) {
+                await sendOrUpdateMessage(chatId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg.message_id);
+                return;
+              }
+              model = gameState.data;
+            } else {
+              await sendOrUpdateMessage(chatId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg.message_id);
+              return;
+            }
+          }
+
+          const level = model.Level;
+          if (!level) {
+            await sendOrUpdateMessage(chatId, '⚠️ Активный уровень не найден.', waitMsg.message_id);
+            return;
+          }
+
+          const sectors = Array.isArray(level.Sectors) ? level.Sectors : [];
+          const totalRequired = Number(level.RequiredSectorsCount) || 0;
+          const passedCount = Number(level.PassedSectorsCount) || 0;
+          const leftToClose = Math.max(totalRequired - passedCount, 0);
+          if (sectors.length === 0) {
+            await bot.editMessageText('<b>🗄 Секторы</b>\n\nНет данных о секторах.', {
+              chat_id: chatId,
+              message_id: waitMsg.message_id,
+              parse_mode: 'HTML'
+            });
+            return;
+          }
+
+          const lines = sectors.map(s => {
+            const order = s?.Order ?? '';
+            const name = escapeHtml(s?.Name ?? '');
+            const isAnswered = s?.IsAnswered === true;
+            const answerTextRaw = s?.Answer;
+            const answerText = extractSectorAnswerText(answerTextRaw);
+            const condition = isAnswered
+              ? (answerText ? `<code>${escapeHtml(answerText)}</code> ✅` : `<code>—</code> ✅`)
+              : `<i>...</i>`;
+            return `#${order} (${name}) — ${condition}`;
+          });
+
+          const totalCount = sectors.length;
+          const header = `<b>🗄 Секторы (обязательных ${totalRequired} из ${totalCount})</b>`;
+          const summary = `Закрыто — <b>${passedCount}</b>, осталось — <b>${leftToClose}</b>`;
+          const body = lines.join('\n');
+          const full = `${header}\n\n${summary}\n\n${body}`;
+
+          if (full.length <= 4000) {
+            await bot.editMessageText(full, {
+              chat_id: chatId,
+              message_id: waitMsg.message_id,
+              parse_mode: 'HTML',
+              disable_web_page_preview: true
+            });
+          } else {
+            await bot.editMessageText(header, {
+              chat_id: chatId,
+              message_id: waitMsg.message_id,
+              parse_mode: 'HTML',
+              disable_web_page_preview: true
+            });
+            for (let i = 0; i < body.length; i += 4000) {
+              await bot.sendMessage(chatId, body.slice(i, i + 4000), { parse_mode: 'HTML', disable_web_page_preview: true });
+            }
+          }
+        } catch (error) {
+          await sendOrUpdateMessage(chatId, `❌ Не удалось получить сектора: ${error.message}`, waitMsg.message_id);
+        }
       } else if (text === '📊 Статус очереди') {
         const queueLength = user.answerQueue.length;
         const status = user.isOnline ? '🟢 Онлайн' : '🔴 Оффлайн';
