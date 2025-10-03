@@ -1241,7 +1241,6 @@ bot.on('callback_query', async (query) => {
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
-  const currentState = userStates.get(chatId) || STATES.WAITING_FOR_LOGIN;
 
   // Обновляем активность пользователя
   updateUserActivity(chatId, msg.from.username, msg.from.first_name);
@@ -1252,6 +1251,19 @@ bot.on('message', async (msg) => {
   }
 
   const user = getUserInfo(chatId);
+
+  // Определяем текущее состояние
+  let currentState = userStates.get(chatId);
+
+  // Если состояние не установлено, проверяем готовность пользователя
+  if (!currentState) {
+    if (isUserReady(chatId)) {
+      currentState = STATES.READY;
+      userStates.set(chatId, STATES.READY);
+    } else {
+      currentState = STATES.WAITING_FOR_LOGIN;
+    }
+  }
 
   // Обработка ввода для whitelist (только для админа)
   if (currentState === 'WAITING_FOR_WHITELIST_ENTRY' && chatId === ROOT_USER_ID) {
