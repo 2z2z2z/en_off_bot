@@ -158,15 +158,73 @@ function isUserReady(userId) {
   return user.login && user.password && user.domain && user.gameId;
 }
 
+// Throttling для обновлений Telegram сообщений (защита от rate limiting)
+const telegramUpdateThrottle = new Map(); // userId -> { lastUpdate: timestamp, pendingText: string, timeout: NodeJS.Timeout }
+
 // Функция для отправки или обновления сообщения
 async function sendOrUpdateMessage(userId, text, messageId = null) {
   try {
     if (messageId) {
-      // Пытаемся обновить существующее сообщение
+      // Проверяем throttle: максимум 1 обновление в 2 секунды на сообщение
+      const throttleKey = `${userId}_${messageId}`;
+      const now = Date.now();
+      const throttle = telegramUpdateThrottle.get(throttleKey);
+
+      if (throttle) {
+        const elapsed = now - throttle.lastUpdate;
+
+        if (elapsed < 2000) {
+          // Слишком рано для обновления - откладываем
+          console.log(`⏳ Throttle: откладываю обновление сообщения (прошло ${elapsed}ms < 2000ms)`);
+
+          // Отменяем предыдущий отложенный апдейт если есть
+          if (throttle.timeout) {
+            clearTimeout(throttle.timeout);
+          }
+
+          // Сохраняем текст для отложенного обновления
+          throttle.pendingText = text;
+
+          // Планируем обновление через оставшееся время
+          const waitTime = 2000 - elapsed;
+          throttle.timeout = setTimeout(async () => {
+            try {
+              await bot.editMessageText(throttle.pendingText, {
+                chat_id: userId,
+                message_id: messageId
+              });
+              throttle.lastUpdate = Date.now();
+              throttle.pendingText = null;
+              throttle.timeout = null;
+              console.log(`✅ Отложенное обновление сообщения выполнено`);
+            } catch (err) {
+              if (err.code === 'ETELEGRAM' && err.response?.body?.description?.includes('message is not modified')) {
+                console.log(`⏭️ Отложенное обновление: сообщение не изменилось`);
+              } else if (err.response?.statusCode === 429) {
+                console.log(`⚠️ Telegram rate limit при отложенном обновлении, пропускаем`);
+              } else {
+                console.error(`❌ Ошибка отложенного обновления:`, err.message);
+              }
+            }
+          }, waitTime);
+
+          return messageId;
+        }
+      }
+
+      // Обновляем сообщение
       await bot.editMessageText(text, {
         chat_id: userId,
         message_id: messageId
       });
+
+      // Обновляем throttle
+      telegramUpdateThrottle.set(throttleKey, {
+        lastUpdate: Date.now(),
+        pendingText: null,
+        timeout: null
+      });
+
       return messageId;
     } else {
       // Отправляем новое сообщение
@@ -179,22 +237,29 @@ async function sendOrUpdateMessage(userId, text, messageId = null) {
       console.log(`⏭️ Сообщение не изменилось, пропускаем обновление`);
       return messageId; // Возвращаем тот же messageId
     }
-    
+
+    // Игнорируем Telegram rate limit (429) - уже обработано throttle
+    if (error.response?.statusCode === 429) {
+      console.log(`⚠️ Telegram rate limit (429), пропускаем обновление сообщения`);
+      return messageId;
+    }
+
     // Для других 400 ошибок отправляем новое сообщение
     if (messageId && error.response?.status === 400) {
       console.log(`📤 Отправляем новое сообщение вместо обновления`);
       const sentMessage = await bot.sendMessage(userId, text);
       return sentMessage.message_id;
     }
-    
+
     throw error;
   }
 }
 
 // Отправка ответа в игру Encounter
-async function sendAnswerToEncounter(userId, answer, progressMessageId = null) {
+async function sendAnswerToEncounter(userId, answer, progressMessageId = null, retryCount = 0) {
   const user = getUserInfo(userId);
-  
+  const MAX_RETRIES = 2; // Максимум 2 повторные попытки (всего 3 попытки)
+
   try {
     const response = await sendToEncounterAPI(user, answer);
     
@@ -226,10 +291,22 @@ async function sendAnswerToEncounter(userId, answer, progressMessageId = null) {
     );
     
     const authErrors = ['Требуется повторная авторизация', 'сессия истекла'];
-    const isAuthError = authErrors.some(errType => 
+    const isAuthError = authErrors.some(errType =>
       error.message.toLowerCase().includes(errType.toLowerCase())
     );
-    
+
+    // Критические ошибки - IP блокировка (не retry!)
+    const criticalErrors = ['IP заблокирован', 'слишком много запросов'];
+    const isCriticalError = criticalErrors.some(errType =>
+      error.message.toLowerCase().includes(errType.toLowerCase())
+    );
+
+    if (isCriticalError) {
+      console.error(`🚫 Критическая ошибка блокировки: ${error.message}`);
+      await sendOrUpdateMessage(userId, `🚫 ${error.message}\n\nБот временно заблокирован. Повторите попытку через 5-10 минут.`, progressMessageId);
+      return null;
+    }
+
     if (isNetworkError) {
       user.answerQueue.push({
         answer: answer,
@@ -237,40 +314,50 @@ async function sendAnswerToEncounter(userId, answer, progressMessageId = null) {
       });
       user.isOnline = false;
       await saveUserData();
-      
+
       bot.sendMessage(userId, `🔄 Нет соединения. Ответ "${answer}" добавлен в очередь.`);
       return null;
     } else if (isAuthError) {
-      console.log(`🔒 Переавторизация для ответа "${answer}"`);
-      
+      // Проверяем не превысили ли лимит retry
+      if (retryCount >= MAX_RETRIES) {
+        console.error(`❌ Достигнут максимум попыток (${MAX_RETRIES}) для ответа "${answer}"`);
+        await sendOrUpdateMessage(userId, `❌ Не удалось отправить ответ "${answer}" после ${MAX_RETRIES + 1} попыток. Попробуйте позже.`, progressMessageId);
+        return null;
+      }
+
+      console.log(`🔒 Переавторизация для ответа "${answer}" (попытка ${retryCount + 1}/${MAX_RETRIES + 1})`);
+
       // Обновляем сообщение о переавторизации если есть прогресс-сообщение
       if (progressMessageId) {
-        await sendOrUpdateMessage(userId, `🔒 Переавторизация для "${answer}"...`, progressMessageId);
+        await sendOrUpdateMessage(userId, `🔒 Переавторизация для "${answer}" (попытка ${retryCount + 1})...`, progressMessageId);
       }
-      
+
       try {
         // Сбрасываем куки и повторяем
         user.authCookies = null;
         await saveUserData();
-        
-        // Задержка и повторная попытка
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        console.log(`🔄 Повторная попытка отправки "${answer}" после переавторизации`);
-        
+
+        // Exponential backoff: 1s, 2s, 4s
+        const backoffDelay = Math.pow(2, retryCount) * 1000;
+        console.log(`⏱️ Exponential backoff: ждём ${backoffDelay}ms перед попыткой ${retryCount + 2}`);
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+
+        console.log(`🔄 Повторная попытка ${retryCount + 2} отправки "${answer}" после переавторизации`);
+
         // Обновляем статус повторной попытки
         if (progressMessageId) {
-          await sendOrUpdateMessage(userId, `🔄 Повторяю отправку "${answer}"...`, progressMessageId);
+          await sendOrUpdateMessage(userId, `🔄 Повторяю отправку "${answer}" (попытка ${retryCount + 2})...`, progressMessageId);
         }
-        
-        return await sendAnswerToEncounter(userId, answer, progressMessageId);
+
+        // Рекурсивный вызов с увеличенным счётчиком retry
+        return await sendAnswerToEncounter(userId, answer, progressMessageId, retryCount + 1);
       } catch (retryError) {
         console.error('Ошибка повторной попытки:', retryError);
-        
+
         // Проверяем не является ли ошибка снова ошибкой "message is not modified"
-        const isMessageNotModifiedError = retryError.code === 'ETELEGRAM' && 
+        const isMessageNotModifiedError = retryError.code === 'ETELEGRAM' &&
           retryError.response?.body?.description?.includes('message is not modified');
-        
+
         if (!isMessageNotModifiedError) {
           await sendOrUpdateMessage(userId, `❌ Не удалось переавторизоваться: ${retryError.message}`, progressMessageId);
         }
@@ -451,24 +538,28 @@ async function processAnswerQueue(userId) {
 async function sendToEncounterAPI(user, answer) {
   try {
     const api = new EncounterAPI(user.domain);
-    
-    // Всегда проверяем действительность авторизации перед отправкой ответа
-    console.log(`🔐 Проверяем авторизацию для ${user.login}...`);
-    console.log(`🎮 Данные игры: домен=${user.domain}, ID=${user.gameId}`);
-    
-    const authResult = await api.authenticate(user.login, user.password);
-    if (authResult.success) {
-      user.authCookies = authResult.cookies;
-      await saveUserData();
-      console.log(`✅ Авторизация подтверждена для ${user.login}`);
+
+    // Авторизуемся ТОЛЬКО если нет cookies или они пустые
+    if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
+      console.log(`🔐 Нет cookies, выполняем авторизацию для ${user.login}...`);
+      console.log(`🎮 Данные игры: домен=${user.domain}, ID=${user.gameId}`);
+
+      const authResult = await api.authenticate(user.login, user.password);
+      if (authResult.success) {
+        user.authCookies = authResult.cookies;
+        await saveUserData();
+        console.log(`✅ Авторизация успешна для ${user.login}`);
+      } else {
+        throw new Error(`Ошибка авторизации: ${authResult.message}`);
+      }
     } else {
-      throw new Error(`Ошибка авторизации: ${authResult.message}`);
+      console.log(`🔑 Используем сохраненные cookies для ${user.login}`);
     }
-    
+
     // Отправляем ответ
     try {
       const result = await api.sendAnswer(user.gameId, answer, user.authCookies);
-      
+
       if (result.success) {
         console.log(`✅ Ответ "${answer}" отправлен в игру ${user.gameId}. ${result.message}`);
         return result;
@@ -477,16 +568,16 @@ async function sendToEncounterAPI(user, answer) {
       }
     } catch (error) {
       // Если ошибка авторизации (401), сбрасываем cookies и пробуем еще раз
-      if (error.message.includes('Требуется авторизация') || error.message.includes('cookies устарели')) {
+      if (error.message.includes('Требуется авторизация') || error.message.includes('cookies устарели') || error.message.includes('сессия истекла')) {
         console.log(`🔄 Cookies устарели, выполняем повторную авторизацию для ${user.login}...`);
         user.authCookies = null;
-        
+
         const authResult = await api.authenticate(user.login, user.password);
         if (authResult.success) {
           user.authCookies = authResult.cookies;
           await saveUserData();
           console.log(`✅ Повторная авторизация после сбоя успешна для ${user.login}`);
-          
+
           // Повторная попытка отправки ответа
           const result = await api.sendAnswer(user.gameId, answer, user.authCookies);
           if (result.success) {

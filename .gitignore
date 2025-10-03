@@ -17,6 +17,8 @@ user_data.json
 # Logs
 logs
 *.log
+error_logs/
+log.txt
 
 # Runtime data
 pids
