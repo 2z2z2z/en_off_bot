@@ -215,8 +215,8 @@ class EncounterAPI {
     }
   }
 
-  // Получение состояния игры
-  async getGameState(gameId, authCookies) {
+  // Получение состояния игры с автоматической реаутентификацией
+  async getGameState(gameId, authCookies, login = null, password = null, isRetry = false) {
     try {
       // Rate limiting: ждём минимум 1.2 сек с последнего запроса к этому домену
       await this._waitRateLimit();
@@ -246,12 +246,16 @@ class EncounterAPI {
 
       // Если сервер вернул HTML (страница логина) вместо JSON — сессия истекла/нет авторизации
       if (typeof data === 'string' && (data.includes('<html') || data.includes('<!DOCTYPE'))) {
-        throw new Error('Требуется авторизация (сессия истекла)');
+        const authError = new Error('Требуется авторизация (сессия истекла)');
+        authError.needsAuth = true;
+        throw authError;
       }
 
       // Если явно пришел Event=4 — не авторизован
       if (data && typeof data === 'object' && data.Event === 4) {
-        throw new Error('Требуется авторизация');
+        const authError = new Error('Требуется авторизация');
+        authError.needsAuth = true;
+        throw authError;
       }
 
       return {
@@ -259,18 +263,47 @@ class EncounterAPI {
         data
       };
     } catch (error) {
+      // Если сессия истекла И есть данные для реаутентификации И это не повторная попытка
+      if (error.needsAuth && login && password && !isRetry) {
+        console.log(`🔄 Сессия истекла, выполняю автоматическую реаутентификацию для ${login}...`);
+
+        try {
+          const authResult = await this.authenticate(login, password);
+
+          if (authResult.success) {
+            console.log(`✅ Автоматическая реаутентификация успешна, повторяю запрос...`);
+            // Повторяем запрос с новыми cookies (isRetry=true чтобы избежать бесконечной рекурсии)
+            return await this.getGameState(gameId, authResult.cookies, login, password, true);
+          } else {
+            // Реаутентификация не удалась - пробрасываем ошибку дальше
+            const reAuthError = new Error(`Автоматическая реаутентификация не удалась: ${authResult.message}`);
+            reAuthError.reAuthFailed = true;
+            reAuthError.authMessage = authResult.message;
+            throw reAuthError;
+          }
+        } catch (authError) {
+          // Ошибка при реаутентификации - пробрасываем дальше
+          if (!authError.reAuthFailed) {
+            const wrappedError = new Error(`Ошибка автоматической реаутентификации: ${authError.message}`);
+            wrappedError.reAuthFailed = true;
+            throw wrappedError;
+          }
+          throw authError;
+        }
+      }
+
       console.error('❌ Ошибка получения состояния игры:', error.message);
-      
+
       // Детальная обработка HTTP ошибок
       if (error.response) {
         const status = error.response.status;
         const data = error.response.data;
-        
+
         console.log(`🔍 Детали HTTP ${status} ошибки:`);
         console.log(`   Статус: ${status}`);
         console.log(`   Данные ответа:`, JSON.stringify(data, null, 2));
         console.log(`   Заголовки:`, JSON.stringify(error.response.headers, null, 2));
-        
+
         const statusMessages = {
           400: `Неправильный запрос HTTP 400. Возможные причины:
           - Неверный ID игры (${gameId})
@@ -282,20 +315,20 @@ class EncounterAPI {
           404: 'Игра не найдена - проверьте ID игры',
           500: 'Ошибка сервера Encounter'
         };
-        
+
         throw new Error(statusMessages[status] || `HTTP ошибка ${status} при получении состояния игры`);
       } else if (error.code === 'ENOTFOUND') {
         throw new Error('Домен не найден - проверьте подключение к интернету');
       } else if (error.code === 'ETIMEDOUT') {
         throw new Error('Превышено время ожидания - сервер не отвечает');
       } else {
-        throw new Error(`Ошибка получения состояния игры: ${error.message}`);
+        throw error;
       }
     }
   }
 
-  // Отправка ответа в игру по официальному API Encounter
-  async sendAnswer(gameId, answer, authCookies) {
+  // Отправка ответа в игру по официальному API Encounter с автоматической реаутентификацией
+  async sendAnswer(gameId, answer, authCookies, login = null, password = null, isRetry = false) {
     try {
       // Проверяем наличие cookies авторизации
       if (!authCookies || Object.keys(authCookies).length === 0) {
@@ -310,9 +343,9 @@ class EncounterAPI {
         // Используем кешированные данные
         console.log(`📦 Используем кеш уровня №${levelData.levelNumber} (ID: ${levelData.levelId})`);
       } else {
-        // Кеша нет - получаем состояние игры
+        // Кеша нет - получаем состояние игры (с автореаутентификацией)
         console.log(`🔄 Кеша нет, получаем состояние игры для ${gameId}...`);
-        const gameState = await this.getGameState(gameId, authCookies);
+        const gameState = await this.getGameState(gameId, authCookies, login, password);
 
         if (!gameState.success) {
           throw new Error('Не удалось получить состояние игры');
@@ -429,7 +462,7 @@ class EncounterAPI {
       console.log(`🌐 POST URL: ${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`);
       console.log(`📦 POST данные: ${postData.toString()}`);
 
-      const response = await axios.post(`${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`, 
+      const response = await axios.post(`${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`,
         postData, {
         timeout: this.timeout,
         headers: {
@@ -443,13 +476,23 @@ class EncounterAPI {
       console.log(`📥 Получен ответ от сервера: Event=${response.data.Event}`);
 
       const result = response.data;
-      
+
       // Проверяем если сервер вернул HTML вместо JSON (страница логина)
       if (typeof result === 'string' && (result.includes('<html>') || result.includes('<!DOCTYPE'))) {
         console.log(`🔒 Сервер перенаправил на страницу входа - сессия истекла`);
-        throw new Error('Требуется повторная авторизация (сессия истекла)');
+        const authError = new Error('Требуется повторная авторизация (сессия истекла)');
+        authError.needsAuth = true;
+        throw authError;
       }
-      
+
+      // Проверяем Event=4 (не авторизован)
+      if (result.Event === 4) {
+        console.log(`🔒 Event=4: игрок не авторизован`);
+        const authError = new Error('Игрок не авторизован');
+        authError.needsAuth = true;
+        throw authError;
+      }
+
       // Проверяем результат
       if (result.Event === undefined || result.Event === null) {
         console.log(`⚠️ Ответ отправлен, но Event не определен - возможно ответ обработан`);
@@ -508,20 +551,53 @@ class EncounterAPI {
         message: message,
         levelNumber: levelData.levelNumber,
         data: result,
-        level: result.Level
+        level: result.Level,
+        newCookies: null // Cookies не обновлялись
       };
 
     } catch (error) {
+      // Если сессия истекла И есть данные для реаутентификации И это не повторная попытка
+      if (error.needsAuth && login && password && !isRetry) {
+        console.log(`🔄 Сессия истекла при отправке ответа, выполняю автоматическую реаутентификацию для ${login}...`);
+
+        try {
+          const authResult = await this.authenticate(login, password);
+
+          if (authResult.success) {
+            console.log(`✅ Автоматическая реаутентификация успешна, повторяю отправку ответа...`);
+            // Повторяем отправку ответа с новыми cookies (isRetry=true чтобы избежать бесконечной рекурсии)
+            const retryResult = await this.sendAnswer(gameId, answer, authResult.cookies, login, password, true);
+            // Добавляем информацию о новых cookies для обновления в основном коде
+            retryResult.newCookies = authResult.cookies;
+            return retryResult;
+          } else {
+            // Реаутентификация не удалась - пробрасываем ошибку дальше
+            const reAuthError = new Error(`Автоматическая реаутентификация не удалась: ${authResult.message}`);
+            reAuthError.reAuthFailed = true;
+            reAuthError.authMessage = authResult.message;
+            throw reAuthError;
+          }
+        } catch (authError) {
+          // Ошибка при реаутентификации - пробрасываем дальше
+          if (!authError.reAuthFailed) {
+            const wrappedError = new Error(`Ошибка автоматической реаутентификации: ${authError.message}`);
+            wrappedError.reAuthFailed = true;
+            throw wrappedError;
+          }
+          throw authError;
+        }
+      }
+
       console.error('Ошибка отправки ответа в Encounter:', error.message);
       throw error;
     }
   }
 
-  // Получение информации об игре
-  async getGameInfo(gameId, authCookies) {
+  // Получение информации об игре с автоматической реаутентификацией
+  async getGameInfo(gameId, authCookies, login = null, password = null) {
     try {
-      const gameState = await this.getGameState(gameId, authCookies);
-      
+      const gameState = await this.getGameState(gameId, authCookies, login, password);
+
       if (gameState.success) {
         const model = gameState.data;
         return {
@@ -548,7 +624,7 @@ class EncounterAPI {
       }
     } catch (error) {
       console.error('Ошибка получения информации об игре:', error.message);
-      
+
       return {
         success: false,
         error: error.message

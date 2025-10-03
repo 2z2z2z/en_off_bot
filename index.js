@@ -556,37 +556,21 @@ async function sendToEncounterAPI(user, answer) {
       console.log(`🔑 Используем сохраненные cookies для ${user.login}`);
     }
 
-    // Отправляем ответ
-    try {
-      const result = await api.sendAnswer(user.gameId, answer, user.authCookies);
+    // Отправляем ответ с автоматической реаутентификацией (передаем login/password)
+    const result = await api.sendAnswer(user.gameId, answer, user.authCookies, user.login, user.password);
 
-      if (result.success) {
-        console.log(`✅ Ответ "${answer}" отправлен в игру ${user.gameId}. ${result.message}`);
-        return result;
-      } else {
-        throw new Error('Не удалось отправить ответ');
-      }
-    } catch (error) {
-      // Если ошибка авторизации (401), сбрасываем cookies и пробуем еще раз
-      if (error.message.includes('Требуется авторизация') || error.message.includes('cookies устарели') || error.message.includes('сессия истекла')) {
-        console.log(`🔄 Cookies устарели, выполняем повторную авторизацию для ${user.login}...`);
-        user.authCookies = null;
+    // Если были обновлены cookies (автореаутентификация сработала) - сохраняем новые
+    if (result.newCookies) {
+      console.log(`🔄 Cookies обновлены после автоматической реаутентификации`);
+      user.authCookies = result.newCookies;
+      await saveUserData();
+    }
 
-        const authResult = await api.authenticate(user.login, user.password);
-        if (authResult.success) {
-          user.authCookies = authResult.cookies;
-          await saveUserData();
-          console.log(`✅ Повторная авторизация после сбоя успешна для ${user.login}`);
-
-          // Повторная попытка отправки ответа
-          const result = await api.sendAnswer(user.gameId, answer, user.authCookies);
-          if (result.success) {
-            console.log(`✅ Ответ "${answer}" отправлен в игру ${user.gameId} после повторной авторизации. ${result.message}`);
-            return result;
-          }
-        }
-      }
-      throw error;
+    if (result.success) {
+      console.log(`✅ Ответ "${answer}" отправлен в игру ${user.gameId}. ${result.message}`);
+      return result;
+    } else {
+      throw new Error('Не удалось отправить ответ');
     }
   } catch (error) {
     console.error('Ошибка API Encounter:', error.message);
@@ -703,9 +687,9 @@ bot.onText(/\/test/, async (msg) => {
       
       if (authResult.success) {
         
-        // Получение информации об игре
-        const gameInfo = await api.getGameInfo(user.gameId, user.authCookies);
-        
+        // Получение информации об игре (с автореаутентификацией)
+        const gameInfo = await api.getGameInfo(user.gameId, user.authCookies, user.login, user.password);
+
         if (gameInfo.success) {
           const data = gameInfo.data;
           bot.sendMessage(chatId, 
