@@ -20,8 +20,23 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const userStates = new Map();
 const userData = new Map();
 
+// Админ-конфигурация
+let adminConfig = {
+  moderationEnabled: false,
+  whitelist: []
+};
+
+// Кеш whitelist для быстрой проверки
+let whitelistCache = new Set();
+
 // Файл для хранения данных пользователей
 const DATA_FILE = process.env.DATA_FILE || 'user_data.json';
+
+// Файл для хранения настроек админа
+const ADMIN_CONFIG_FILE = 'admin_config.json';
+
+// ID root пользователя (админа)
+const ROOT_USER_ID = 197924096;
 
 // Состояния бота
 const STATES = {
@@ -37,10 +52,35 @@ async function loadUserData() {
   try {
     if (await fs.pathExists(DATA_FILE)) {
       const data = await fs.readJson(DATA_FILE);
+      const now = Date.now();
+      let migrationCount = 0;
+
       for (const [userId, userInfo] of Object.entries(data)) {
+        // Миграция: добавляем новые поля если их нет
+        if (!userInfo.telegramUsername) {
+          userInfo.telegramUsername = null;
+          migrationCount++;
+        }
+        if (!userInfo.telegramFirstName) {
+          userInfo.telegramFirstName = null;
+        }
+        if (!userInfo.firstActivity) {
+          userInfo.firstActivity = now;
+          migrationCount++;
+        }
+        if (!userInfo.lastActivity) {
+          userInfo.lastActivity = now;
+          migrationCount++;
+        }
+
         userData.set(userId, userInfo);
       }
-      console.log('Данные пользователей загружены');
+
+      console.log(`Данные пользователей загружены (${userData.size} пользователей)`);
+      if (migrationCount > 0) {
+        console.log(`Выполнена миграция данных для ${migrationCount} полей`);
+        await saveUserData(); // Сохраняем мигрированные данные
+      }
     }
   } catch (error) {
     console.error('Ошибка загрузки данных пользователей:', error);
@@ -55,6 +95,45 @@ async function saveUserData() {
   } catch (error) {
     console.error('Ошибка сохранения данных пользователей:', error);
   }
+}
+
+// Загрузка админ-конфигурации
+async function loadAdminConfig() {
+  try {
+    if (await fs.pathExists(ADMIN_CONFIG_FILE)) {
+      adminConfig = await fs.readJson(ADMIN_CONFIG_FILE);
+      rebuildWhitelistCache();
+      console.log('Админ-конфигурация загружена');
+    } else {
+      // Создаем файл с начальными настройками
+      await saveAdminConfig();
+      console.log('Создан файл админ-конфигурации');
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки админ-конфигурации:', error);
+  }
+}
+
+// Сохранение админ-конфигурации
+async function saveAdminConfig() {
+  try {
+    await fs.writeJson(ADMIN_CONFIG_FILE, adminConfig, { spaces: 2 });
+    rebuildWhitelistCache();
+  } catch (error) {
+    console.error('Ошибка сохранения админ-конфигурации:', error);
+  }
+}
+
+// Пересборка кеша whitelist
+function rebuildWhitelistCache() {
+  whitelistCache.clear();
+  if (adminConfig.whitelist && Array.isArray(adminConfig.whitelist)) {
+    adminConfig.whitelist.forEach(entry => {
+      const key = `${entry.type}:${entry.value.toLowerCase()}`;
+      whitelistCache.add(key);
+    });
+  }
+  console.log(`Whitelist cache обновлен: ${whitelistCache.size} записей`);
 }
 
 // Создание клавиатуры для главного меню
@@ -139,6 +218,7 @@ function extractSectorAnswerText(rawAnswer) {
 // Получение информации о пользователе
 function getUserInfo(userId) {
   if (!userData.has(userId)) {
+    const now = Date.now();
     userData.set(userId, {
       login: null,
       password: null,
@@ -146,7 +226,11 @@ function getUserInfo(userId) {
       gameId: null,
       authCookies: null,
       answerQueue: [],
-      isOnline: true
+      isOnline: true,
+      telegramUsername: null,
+      telegramFirstName: null,
+      firstActivity: now,
+      lastActivity: now
     });
   }
   return userData.get(userId);
@@ -156,6 +240,75 @@ function getUserInfo(userId) {
 function isUserReady(userId) {
   const user = getUserInfo(userId);
   return user.login && user.password && user.domain && user.gameId;
+}
+
+/**
+ * Обновление активности пользователя
+ * @param {string} userId - Telegram ID пользователя
+ * @param {string} username - Telegram username (@username)
+ * @param {string} firstName - Telegram имя пользователя
+ */
+function updateUserActivity(userId, username, firstName) {
+  const user = getUserInfo(userId);
+  const now = Date.now();
+
+  // Обновляем username и firstName если они есть
+  if (username && user.telegramUsername !== username) {
+    user.telegramUsername = username;
+  }
+  if (firstName && user.telegramFirstName !== firstName) {
+    user.telegramFirstName = firstName;
+  }
+
+  // Обновляем lastActivity
+  user.lastActivity = now;
+}
+
+/**
+ * Проверка пользователя в whitelist
+ * @param {string} userId - Telegram ID пользователя
+ * @returns {boolean} - true если пользователь в whitelist или модерация выключена
+ */
+function isUserAllowed(userId) {
+  // Если модерация выключена - разрешаем всем
+  if (!adminConfig.moderationEnabled) {
+    return true;
+  }
+
+  const user = getUserInfo(userId);
+
+  // Проверяем по Telegram username
+  if (user.telegramUsername) {
+    const telegramKey = `telegram:${user.telegramUsername.toLowerCase().replace('@', '')}`;
+    if (whitelistCache.has(telegramKey)) {
+      return true;
+    }
+  }
+
+  // Проверяем по Encounter login
+  if (user.login) {
+    const encounterKey = `encounter:${user.login.toLowerCase()}`;
+    if (whitelistCache.has(encounterKey)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Проверка доступа к игровым функциям
+ * @param {string} userId - Telegram ID пользователя
+ * @returns {boolean} - true если доступ разрешен
+ */
+async function checkGameAccess(userId) {
+  if (isUserAllowed(userId)) {
+    return true;
+  }
+
+  // Доступ запрещен - отправляем сообщение
+  await bot.sendMessage(userId, '🚫 Доступ к боту не разрешен. Свяжитесь с @seo2z');
+  return false;
 }
 
 // Throttling для обновлений Telegram сообщений (защита от rate limiting)
@@ -636,6 +789,213 @@ async function checkAuthentication(login, password, domain = 'https://world.en.c
   }
 }
 
+/**
+ * Показать список пользователей с пагинацией
+ */
+async function showUsersList(chatId, messageId, page = 0) {
+  const USERS_PER_PAGE = 10;
+  const users = Array.from(userData.entries());
+  const totalPages = Math.ceil(users.length / USERS_PER_PAGE);
+  const start = page * USERS_PER_PAGE;
+  const end = start + USERS_PER_PAGE;
+  const pageUsers = users.slice(start, end);
+
+  if (users.length === 0) {
+    const message = '👥 <b>Пользователи</b>\n\nПользователей пока нет';
+    const keyboard = {
+      inline_keyboard: [[{ text: '◀️ Назад', callback_data: 'admin_back' }]]
+    };
+
+    await bot.editMessageText(message, {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'HTML',
+      reply_markup: keyboard
+    });
+    return;
+  }
+
+  let message = `👥 <b>Пользователи</b> (страница ${page + 1}/${totalPages})\n\n`;
+
+  for (const [userId, user] of pageUsers) {
+    const username = user.telegramUsername ? `@${user.telegramUsername}` : user.telegramFirstName || 'Без имени';
+    const login = user.login || '—';
+    const firstActivity = user.firstActivity ? new Date(user.firstActivity).toLocaleDateString('ru-RU') : '—';
+    const lastActivity = user.lastActivity ? new Date(user.lastActivity).toLocaleString('ru-RU') : '—';
+
+    message += `<b>${username}</b>\n`;
+    message += `Логин EN: <code>${login}</code>\n`;
+    message += `Первый вход: ${firstActivity}\n`;
+    message += `Последний: ${lastActivity}\n\n`;
+  }
+
+  // Кнопки навигации
+  const keyboard = { inline_keyboard: [] };
+  const navButtons = [];
+
+  if (page > 0) {
+    navButtons.push({ text: '◀️ Назад', callback_data: `admin_users_${page - 1}` });
+  }
+  if (page < totalPages - 1) {
+    navButtons.push({ text: 'Вперед ▶️', callback_data: `admin_users_${page + 1}` });
+  }
+
+  if (navButtons.length > 0) {
+    keyboard.inline_keyboard.push(navButtons);
+  }
+
+  keyboard.inline_keyboard.push([{ text: '🏠 Главное меню', callback_data: 'admin_back' }]);
+
+  await bot.editMessageText(message, {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'HTML',
+    reply_markup: keyboard
+  });
+}
+
+/**
+ * Показать меню управления модерацией
+ */
+async function showModerationMenu(chatId, messageId) {
+  const status = adminConfig.moderationEnabled ? 'включена ✅' : 'выключена ❌';
+  const buttonText = adminConfig.moderationEnabled ? '❌ Выключить' : '✅ Включить';
+
+  const message = `🔐 <b>Управление модерацией</b>\n\n` +
+    `Текущий статус: ${status}\n\n` +
+    `Когда модерация включена, доступ к боту имеют только пользователи из белого списка.`;
+
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: buttonText, callback_data: 'moderation_toggle' }],
+      [{ text: '◀️ Назад', callback_data: 'admin_back' }]
+    ]
+  };
+
+  await bot.editMessageText(message, {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'HTML',
+    reply_markup: keyboard
+  });
+}
+
+/**
+ * Показать меню управления белым списком
+ */
+async function showWhitelistMenu(chatId, messageId, page = 0) {
+  const ITEMS_PER_PAGE = 10;
+  const whitelist = adminConfig.whitelist || [];
+  const totalPages = Math.ceil(whitelist.length / ITEMS_PER_PAGE);
+  const start = page * ITEMS_PER_PAGE;
+  const end = start + ITEMS_PER_PAGE;
+  const pageItems = whitelist.slice(start, end);
+
+  let message = `📋 <b>Белый список</b>\n\n`;
+
+  if (whitelist.length === 0) {
+    message += 'Белый список пуст\n\n';
+    message += 'Нажмите "Добавить", чтобы добавить пользователя';
+  } else {
+    message += `Страница ${page + 1}/${totalPages}\n\n`;
+
+    for (let i = 0; i < pageItems.length; i++) {
+      const item = pageItems[i];
+      const globalIndex = start + i;
+      const typeIcon = item.type === 'encounter' ? '🎮' : '📱';
+      message += `${globalIndex + 1}. ${typeIcon} <code>${item.value}</code>\n`;
+    }
+  }
+
+  // Кнопки
+  const keyboard = { inline_keyboard: [] };
+
+  // Кнопки удаления (только первые 5 на странице для экономии места)
+  const removeButtons = [];
+  for (let i = 0; i < Math.min(pageItems.length, 5); i++) {
+    const globalIndex = start + i;
+    removeButtons.push({
+      text: `🗑️ ${globalIndex + 1}`,
+      callback_data: `whitelist_remove_${globalIndex}`
+    });
+  }
+
+  if (removeButtons.length > 0) {
+    // Разбиваем по 3 кнопки в ряд
+    for (let i = 0; i < removeButtons.length; i += 3) {
+      keyboard.inline_keyboard.push(removeButtons.slice(i, i + 3));
+    }
+  }
+
+  // Навигация
+  const navButtons = [];
+  if (page > 0) {
+    navButtons.push({ text: '◀️', callback_data: `admin_whitelist_${page - 1}` });
+  }
+  navButtons.push({ text: '➕ Добавить', callback_data: 'whitelist_add' });
+  if (page < totalPages - 1) {
+    navButtons.push({ text: '▶️', callback_data: `admin_whitelist_${page + 1}` });
+  }
+
+  keyboard.inline_keyboard.push(navButtons);
+  keyboard.inline_keyboard.push([{ text: '◀️ Назад', callback_data: 'admin_back' }]);
+
+  await bot.editMessageText(message, {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'HTML',
+    reply_markup: keyboard
+  });
+}
+
+/**
+ * Обработка добавления в whitelist
+ */
+async function handleWhitelistAdd(chatId, messageId) {
+  const message = `➕ <b>Добавление в белый список</b>\n\n` +
+    `Отправьте данные в формате:\n\n` +
+    `<code>telegram:username</code>\n` +
+    `или\n` +
+    `<code>encounter:login</code>\n\n` +
+    `Пример:\n` +
+    `<code>telegram:johndoe</code>\n` +
+    `<code>encounter:player123</code>`;
+
+  const keyboard = {
+    inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'admin_whitelist_0' }]]
+  };
+
+  await bot.editMessageText(message, {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'HTML',
+    reply_markup: keyboard
+  });
+
+  // Устанавливаем состояние ожидания ввода
+  userStates.set(chatId, 'WAITING_FOR_WHITELIST_ENTRY');
+}
+
+/**
+ * Обработка удаления из whitelist
+ */
+async function handleWhitelistRemove(chatId, messageId, index) {
+  if (!adminConfig.whitelist || index < 0 || index >= adminConfig.whitelist.length) {
+    await bot.answerCallbackQuery(query.id, {
+      text: '❌ Ошибка: запись не найдена',
+      show_alert: true
+    });
+    return;
+  }
+
+  // Удаляем запись
+  adminConfig.whitelist.splice(index, 1);
+  await saveAdminConfig();
+
+  // Обновляем меню
+  await showWhitelistMenu(chatId, messageId, 0);
+}
+
 // Обработчик команды /reset - сброс всех данных пользователя
 bot.onText(/\/reset/, async (msg) => {
   const chatId = msg.chat.id;
@@ -723,6 +1083,71 @@ bot.onText(/\/test/, async (msg) => {
   }
 });
 
+// Обработчик команды /admin
+bot.onText(/\/admin/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  // Проверка root user
+  if (chatId !== ROOT_USER_ID) {
+    bot.sendMessage(chatId, '❌ У вас нет доступа к админ-панели');
+    return;
+  }
+
+  // Отправляем главное меню админа
+  await showAdminMainMenu(chatId);
+});
+
+// Обработчик команды /cancel - отмена текущего действия
+bot.onText(/\/cancel/, async (msg) => {
+  const chatId = msg.chat.id;
+  const currentState = userStates.get(chatId);
+
+  if (currentState) {
+    userStates.delete(chatId);
+    bot.sendMessage(chatId, '❌ Действие отменено');
+  } else {
+    bot.sendMessage(chatId, 'Нет активных действий для отмены');
+  }
+});
+
+/**
+ * Показать главное меню админ-панели
+ */
+async function showAdminMainMenu(chatId) {
+  const usersCount = userData.size;
+  const moderationStatus = adminConfig.moderationEnabled ? 'включена ✅' : 'выключена ❌';
+  const whitelistCount = adminConfig.whitelist ? adminConfig.whitelist.length : 0;
+
+  const message = `👑 <b>Админ-панель</b>\n\n` +
+    `👥 Пользователей: ${usersCount}\n` +
+    `🔐 Модерация: ${moderationStatus}\n` +
+    `📋 Белый список: ${whitelistCount} записей`;
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: '👥 Пользователи', callback_data: 'admin_users_0' }
+      ],
+      [
+        { text: '🔐 Модерация', callback_data: 'admin_moderation' }
+      ],
+      [
+        { text: '📋 Белый список', callback_data: 'admin_whitelist_0' }
+      ]
+    ]
+  };
+
+  try {
+    await bot.sendMessage(chatId, message, {
+      parse_mode: 'HTML',
+      reply_markup: keyboard
+    });
+  } catch (error) {
+    console.error('Ошибка отправки админ-меню:', error);
+    bot.sendMessage(chatId, '❌ Ошибка отображения админ-панели');
+  }
+}
+
 // Обработчик команды /start
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
@@ -751,19 +1176,124 @@ bot.onText(/\/start/, (msg) => {
   }
 });
 
+// Обработчик callback_query (нажатия на inline кнопки)
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const messageId = query.message.message_id;
+  const data = query.data;
+
+  // Проверка root user для админ-команд
+  if (data.startsWith('admin_') && chatId !== ROOT_USER_ID) {
+    await bot.answerCallbackQuery(query.id, {
+      text: '❌ У вас нет доступа',
+      show_alert: true
+    });
+    return;
+  }
+
+  try {
+    // Обработка админ-команд
+    if (data.startsWith('admin_users_')) {
+      const page = parseInt(data.split('_')[2]) || 0;
+      await showUsersList(chatId, messageId, page);
+      await bot.answerCallbackQuery(query.id);
+    } else if (data === 'admin_moderation') {
+      await showModerationMenu(chatId, messageId);
+      await bot.answerCallbackQuery(query.id);
+    } else if (data.startsWith('admin_whitelist_')) {
+      const page = parseInt(data.split('_')[2]) || 0;
+      userStates.delete(chatId); // Сброс состояния при переходе в whitelist меню
+      await showWhitelistMenu(chatId, messageId, page);
+      await bot.answerCallbackQuery(query.id);
+    } else if (data === 'admin_back') {
+      userStates.delete(chatId); // Сброс состояния при возврате в главное меню
+      await bot.deleteMessage(chatId, messageId);
+      await showAdminMainMenu(chatId);
+      await bot.answerCallbackQuery(query.id);
+    } else if (data === 'moderation_toggle') {
+      // Переключение модерации
+      adminConfig.moderationEnabled = !adminConfig.moderationEnabled;
+      await saveAdminConfig();
+      await showModerationMenu(chatId, messageId);
+      await bot.answerCallbackQuery(query.id, {
+        text: adminConfig.moderationEnabled ? '✅ Модерация включена' : '❌ Модерация выключена'
+      });
+    } else if (data === 'whitelist_add') {
+      await handleWhitelistAdd(chatId, messageId);
+      await bot.answerCallbackQuery(query.id);
+    } else if (data.startsWith('whitelist_remove_')) {
+      const index = parseInt(data.split('_')[2]);
+      await handleWhitelistRemove(chatId, messageId, index);
+      await bot.answerCallbackQuery(query.id, { text: '🗑️ Удалено из белого списка' });
+    } else {
+      await bot.answerCallbackQuery(query.id);
+    }
+  } catch (error) {
+    console.error('Ошибка обработки callback_query:', error);
+    await bot.answerCallbackQuery(query.id, {
+      text: '❌ Ошибка обработки команды',
+      show_alert: true
+    });
+  }
+});
+
 // Обработчик текстовых сообщений
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
   const currentState = userStates.get(chatId) || STATES.WAITING_FOR_LOGIN;
-  
+
+  // Обновляем активность пользователя
+  updateUserActivity(chatId, msg.from.username, msg.from.first_name);
+
   // Пропускаем команды
   if (text && text.startsWith('/')) {
     return;
   }
-  
+
   const user = getUserInfo(chatId);
-  
+
+  // Обработка ввода для whitelist (только для админа)
+  if (currentState === 'WAITING_FOR_WHITELIST_ENTRY' && chatId === ROOT_USER_ID) {
+    const input = text.trim();
+    const parts = input.split(':');
+
+    if (parts.length !== 2 || !['telegram', 'encounter'].includes(parts[0])) {
+      bot.sendMessage(chatId, '❌ Неправильный формат. Используйте:\ntelegram:username или encounter:login');
+      return;
+    }
+
+    const type = parts[0];
+    const value = parts[1].toLowerCase().replace('@', '');
+
+    // Проверяем дубликаты
+    const exists = adminConfig.whitelist.some(item =>
+      item.type === type && item.value.toLowerCase() === value
+    );
+
+    if (exists) {
+      bot.sendMessage(chatId, '⚠️ Эта запись уже есть в белом списке');
+      userStates.delete(chatId);
+      return;
+    }
+
+    // Добавляем в whitelist
+    adminConfig.whitelist.push({
+      type,
+      value,
+      addedBy: chatId,
+      addedAt: Date.now()
+    });
+
+    await saveAdminConfig();
+    await bot.sendMessage(chatId, `✅ Добавлено в белый список:\n${type === 'telegram' ? '📱' : '🎮'} <code>${value}</code>`, {
+      parse_mode: 'HTML'
+    });
+
+    userStates.delete(chatId);
+    return;
+  }
+
   switch (currentState) {
     case STATES.WAITING_FOR_LOGIN:
       user.login = text;
@@ -805,8 +1335,13 @@ bot.on('message', async (msg) => {
       break;
       
     case STATES.WAITING_FOR_GAME_URL:
+      // Проверка доступа к игре
+      if (!(await checkGameAccess(chatId))) {
+        return;
+      }
+
       const gameUrlResult = parseGameUrl(text);
-      
+
       if (gameUrlResult.success) {
         // Если домен изменился, сбрасываем старые cookies авторизации
         if (user.domain && user.domain !== gameUrlResult.domain) {
@@ -838,6 +1373,11 @@ bot.on('message', async (msg) => {
     case STATES.READY:
       // Обработка кнопок главного меню
       if (text === 'Задание') {
+        // Проверка доступа к игре
+        if (!(await checkGameAccess(chatId))) {
+          return;
+        }
+
         // Получаем текст задания текущего уровня
         const waitMsg = await bot.sendMessage(chatId, '🔄 Получаю задание текущего уровня...');
         try {
@@ -970,6 +1510,11 @@ bot.on('message', async (msg) => {
           await sendOrUpdateMessage(chatId, `❌ Не удалось получить задание: ${error.message}`, waitMsg.message_id);
         }
       } else if (text === 'Сектора') {
+        // Проверка доступа к игре
+        if (!(await checkGameAccess(chatId))) {
+          return;
+        }
+
         const waitMsg = await bot.sendMessage(chatId, '🔄 Получаю список секторов...');
         try {
           const api = new EncounterAPI(user.domain);
@@ -1082,10 +1627,15 @@ bot.on('message', async (msg) => {
           ).join('\n') : 'Очередь пуста'}`
         );
       } else if (text === '🔗 Сменить игру') {
+        // Проверка доступа к игре
+        if (!(await checkGameAccess(chatId))) {
+          return;
+        }
+
         // Сбрасываем cookies при смене игры
         user.authCookies = null;
         await saveUserData();
-        
+
         userStates.set(chatId, STATES.WAITING_FOR_GAME_URL);
         bot.sendMessage(chatId, 'Пришлите новую ссылку на игру:\n\n• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n• https://domain.en.cx/gameengines/encounter/play/XXXXX/');
       } else if (text === '👤 Сменить авторизацию') {
@@ -1096,6 +1646,11 @@ bot.on('message', async (msg) => {
         userStates.set(chatId, STATES.WAITING_FOR_LOGIN);
         bot.sendMessage(chatId, 'Введите новый логин:');
       } else {
+        // Проверка доступа к игре перед отправкой ответа
+        if (!(await checkGameAccess(chatId))) {
+          return;
+        }
+
         // Это ответ для игры
         const progressMessage = await bot.sendMessage(chatId, `⏳ Отправляю ответ "${text}"...`);
         const result = await sendAnswerToEncounter(chatId, text, progressMessage.message_id);
@@ -1121,6 +1676,7 @@ bot.on('polling_error', (error) => {
 // Запуск бота
 async function startBot() {
   await loadUserData();
+  await loadAdminConfig();
   console.log('🤖 Telegram-бот en_off_bot запущен!');
   console.log('📱 Готов к приему сообщений...');
 }
