@@ -102,6 +102,38 @@ async function loadAdminConfig() {
   try {
     if (await fs.pathExists(ADMIN_CONFIG_FILE)) {
       adminConfig = await fs.readJson(ADMIN_CONFIG_FILE);
+
+      // Миграция старого формата whitelist
+      let migrationCount = 0;
+      if (adminConfig.whitelist && Array.isArray(adminConfig.whitelist)) {
+        adminConfig.whitelist = adminConfig.whitelist.map(item => {
+          // Если уже новый формат - оставляем как есть
+          if (item.login) {
+            return item;
+          }
+          // Если старый формат с type === 'encounter'
+          if (item.type === 'encounter' && item.value) {
+            migrationCount++;
+            return {
+              login: item.value,
+              addedBy: item.addedBy,
+              addedAt: item.addedAt
+            };
+          }
+          // Если старый формат с type === 'telegram' - игнорируем
+          if (item.type === 'telegram') {
+            migrationCount++;
+            return null;
+          }
+          return item;
+        }).filter(Boolean); // Удаляем null значения
+
+        if (migrationCount > 0) {
+          console.log(`Выполнена миграция whitelist: обработано ${migrationCount} записей`);
+          await saveAdminConfig();
+        }
+      }
+
       rebuildWhitelistCache();
       console.log('Админ-конфигурация загружена');
     } else {
@@ -129,8 +161,11 @@ function rebuildWhitelistCache() {
   whitelistCache.clear();
   if (adminConfig.whitelist && Array.isArray(adminConfig.whitelist)) {
     adminConfig.whitelist.forEach(entry => {
-      const key = `${entry.type}:${entry.value.toLowerCase()}`;
-      whitelistCache.add(key);
+      // Новый формат: entry.login или старый формат: entry.type + entry.value
+      const login = entry.login || (entry.type === 'encounter' ? entry.value : null);
+      if (login) {
+        whitelistCache.add(login.toLowerCase());
+      }
     });
   }
   console.log(`Whitelist cache обновлен: ${whitelistCache.size} записей`);
@@ -277,18 +312,9 @@ function isUserAllowed(userId) {
 
   const user = getUserInfo(userId);
 
-  // Проверяем по Telegram username
-  if (user.telegramUsername) {
-    const telegramKey = `telegram:${user.telegramUsername.toLowerCase().replace('@', '')}`;
-    if (whitelistCache.has(telegramKey)) {
-      return true;
-    }
-  }
-
-  // Проверяем по Encounter login
+  // Проверяем только по Encounter login
   if (user.login) {
-    const encounterKey = `encounter:${user.login.toLowerCase()}`;
-    if (whitelistCache.has(encounterKey)) {
+    if (whitelistCache.has(user.login.toLowerCase())) {
       return true;
     }
   }
@@ -902,8 +928,9 @@ async function showWhitelistMenu(chatId, messageId, page = 0) {
     for (let i = 0; i < pageItems.length; i++) {
       const item = pageItems[i];
       const globalIndex = start + i;
-      const typeIcon = item.type === 'encounter' ? '🎮' : '📱';
-      message += `${globalIndex + 1}. ${typeIcon} <code>${item.value}</code>\n`;
+      // Получаем логин из нового или старого формата
+      const login = item.login || (item.type === 'encounter' ? item.value : item.value);
+      message += `${globalIndex + 1}. 🎮 <code>${login}</code>\n`;
     }
   }
 
@@ -953,13 +980,8 @@ async function showWhitelistMenu(chatId, messageId, page = 0) {
  */
 async function handleWhitelistAdd(chatId, messageId) {
   const message = `➕ <b>Добавление в белый список</b>\n\n` +
-    `Отправьте данные в формате:\n\n` +
-    `<code>telegram:username</code>\n` +
-    `или\n` +
-    `<code>encounter:login</code>\n\n` +
-    `Пример:\n` +
-    `<code>telegram:johndoe</code>\n` +
-    `<code>encounter:player123</code>`;
+    `Отправьте Encounter логин пользователя:\n\n` +
+    `Пример: <code>player123</code>`;
 
   const keyboard = {
     inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'admin_whitelist_0' }]]
@@ -1267,38 +1289,34 @@ bot.on('message', async (msg) => {
 
   // Обработка ввода для whitelist (только для админа)
   if (currentState === 'WAITING_FOR_WHITELIST_ENTRY' && chatId === ROOT_USER_ID) {
-    const input = text.trim();
-    const parts = input.split(':');
+    const login = text.trim();
 
-    if (parts.length !== 2 || !['telegram', 'encounter'].includes(parts[0])) {
-      bot.sendMessage(chatId, '❌ Неправильный формат. Используйте:\ntelegram:username или encounter:login');
+    if (login.length < 2) {
+      bot.sendMessage(chatId, '❌ Логин должен содержать минимум 2 символа');
       return;
     }
 
-    const type = parts[0];
-    const value = parts[1].toLowerCase().replace('@', '');
-
     // Проверяем дубликаты
-    const exists = adminConfig.whitelist.some(item =>
-      item.type === type && item.value.toLowerCase() === value
-    );
+    const exists = adminConfig.whitelist.some(item => {
+      const itemLogin = item.login || (item.type === 'encounter' ? item.value : null);
+      return itemLogin && itemLogin.toLowerCase() === login.toLowerCase();
+    });
 
     if (exists) {
-      bot.sendMessage(chatId, '⚠️ Эта запись уже есть в белом списке');
+      bot.sendMessage(chatId, '⚠️ Этот логин уже есть в белом списке');
       userStates.delete(chatId);
       return;
     }
 
     // Добавляем в whitelist
     adminConfig.whitelist.push({
-      type,
-      value,
+      login,
       addedBy: chatId,
       addedAt: Date.now()
     });
 
     await saveAdminConfig();
-    await bot.sendMessage(chatId, `✅ Добавлено в белый список:\n${type === 'telegram' ? '📱' : '🎮'} <code>${value}</code>`, {
+    await bot.sendMessage(chatId, `✅ Добавлено в белый список:\n🎮 <code>${login}</code>`, {
       parse_mode: 'HTML'
     });
 
