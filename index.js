@@ -30,9 +30,15 @@ require('dotenv').config();
 
 // Токен Telegram бота из переменной окружения (обязателен)
 const BOT_TOKEN = process.env.BOT_TOKEN;
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 
 if (!BOT_TOKEN) {
   console.error('❌ Не задан BOT_TOKEN. Добавьте токен бота в .env или переменные окружения.');
+  process.exit(1);
+}
+
+if (!ENCRYPTION_KEY) {
+  console.error('❌ Не задан ENCRYPTION_KEY. Добавьте уникальный ключ шифрования в .env или переменные окружения.');
   process.exit(1);
 }
 
@@ -1427,7 +1433,33 @@ async function checkGameAccess(platform, userId) {
 }
 
 // Throttling для обновлений сообщений (защита от rate limiting)
-const messageUpdateThrottle = new Map(); // `${platform}_${userId}_${messageId}` -> { lastUpdate, pendingText, pendingOptions, timeout }
+const MESSAGE_THROTTLE_TTL = 60_000;
+const messageUpdateThrottle = new Map(); // `${platform}_${userId}_${messageId}` -> { lastUpdate, pendingText, pendingOptions, timeout, cleanupTimeout }
+
+function scheduleThrottleCleanup(throttleKey, entry) {
+  if (!entry) {
+    return;
+  }
+
+  if (entry.cleanupTimeout) {
+    clearTimeout(entry.cleanupTimeout);
+    entry.cleanupTimeout = null;
+  }
+
+  entry.cleanupTimeout = setTimeout(() => {
+    const current = messageUpdateThrottle.get(throttleKey);
+    if (!current) {
+      return;
+    }
+
+    if (!current.timeout && (current.pendingText === null || current.pendingText === undefined)) {
+      messageUpdateThrottle.delete(throttleKey);
+    } else {
+      // Было отложенное обновление — попробуем ещё раз позже
+      scheduleThrottleCleanup(throttleKey, current);
+    }
+  }, MESSAGE_THROTTLE_TTL);
+}
 
 async function sendOrUpdateMessage(platform, userId, text, messageId = null, options = {}) {
   try {
@@ -1450,6 +1482,11 @@ async function sendOrUpdateMessage(platform, userId, text, messageId = null, opt
           throttle.pendingOptions = options;
 
           const waitTime = 2000 - elapsed;
+          if (throttle.cleanupTimeout) {
+            clearTimeout(throttle.cleanupTimeout);
+            throttle.cleanupTimeout = null;
+          }
+
           throttle.timeout = setTimeout(async () => {
             try {
               await editPlatformMessage(platform, userId, messageId, throttle.pendingText, throttle.pendingOptions || {});
@@ -1458,6 +1495,7 @@ async function sendOrUpdateMessage(platform, userId, text, messageId = null, opt
               throttle.pendingOptions = null;
               throttle.timeout = null;
               console.log('✅ Отложенное обновление сообщения выполнено');
+              scheduleThrottleCleanup(throttleKey, throttle);
             } catch (err) {
               if (err.code === 'ETELEGRAM' && err.response?.body?.description?.includes('message is not modified')) {
                 console.log('⏭️ Отложенное обновление: сообщение не изменилось');
@@ -1466,6 +1504,10 @@ async function sendOrUpdateMessage(platform, userId, text, messageId = null, opt
               } else {
                 console.error('❌ Ошибка отложенного обновления:', err.message);
               }
+              throttle.pendingText = null;
+              throttle.pendingOptions = null;
+              throttle.timeout = null;
+              scheduleThrottleCleanup(throttleKey, throttle);
             }
           }, waitTime);
 
@@ -1479,8 +1521,10 @@ async function sendOrUpdateMessage(platform, userId, text, messageId = null, opt
         lastUpdate: Date.now(),
         pendingText: null,
         pendingOptions: null,
-        timeout: null
+        timeout: null,
+        cleanupTimeout: null
       });
+      scheduleThrottleCleanup(throttleKey, messageUpdateThrottle.get(throttleKey));
 
       return messageId;
     }

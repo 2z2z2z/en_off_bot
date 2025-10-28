@@ -6,9 +6,10 @@ const path = require('path');
 class EncounterAPI {
   // Статический словарь для отслеживания последнего времени запроса к каждому домену
   static lastRequestTime = {};
+  static requestQueues = {};
 
   // Кеш данных уровня для избежания лишних запросов getGameState
-  // Структура: { "domain_gameId": { levelId, levelNumber, timestamp, isPassed } }
+  // Структура: { "domain_gameId_user": { levelId, levelNumber, timestamp, isPassed } }
   static levelCache = {};
 
   constructor(domain) {
@@ -18,17 +19,41 @@ class EncounterAPI {
 
   // Rate limiter: минимум 1.2 секунды между любыми запросами к одному домену
   async _waitRateLimit() {
-    const now = Date.now();
-    const lastTime = EncounterAPI.lastRequestTime[this.domain] || 0;
-    const elapsed = now - lastTime;
+    const domain = this.domain;
+    const queueTail = EncounterAPI.requestQueues[domain] || Promise.resolve();
 
-    if (elapsed < 1200) {
-      const waitTime = 1200 - elapsed;
-      console.log(`⏱️ Rate limit: жду ${waitTime}ms перед запросом к ${this.domain}`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+    let releaseQueue;
+    const queueSlot = new Promise(resolve => {
+      releaseQueue = resolve;
+    });
+
+    EncounterAPI.requestQueues[domain] = queueTail.then(() => queueSlot);
+
+    await queueTail;
+
+    try {
+      const now = Date.now();
+      const lastTime = EncounterAPI.lastRequestTime[domain] || 0;
+      const elapsed = now - lastTime;
+
+      if (elapsed < 1200) {
+        const waitTime = 1200 - elapsed;
+        console.log(`⏱️ Rate limit: жду ${waitTime}ms перед запросом к ${domain}`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+
+      EncounterAPI.lastRequestTime[domain] = Date.now();
+    } finally {
+      if (typeof releaseQueue === 'function') {
+        releaseQueue();
+      }
+
+      // После завершения цепочки возвращаемся к resolved promise,
+      // чтобы избежать роста цепочки промисов в памяти
+      if (EncounterAPI.requestQueues[domain] === queueSlot) {
+        EncounterAPI.requestQueues[domain] = Promise.resolve();
+      }
     }
-
-    EncounterAPI.lastRequestTime[this.domain] = Date.now();
   }
 
   // Сохранение HTML ошибок для анализа
@@ -47,10 +72,28 @@ class EncounterAPI {
     }
   }
 
+  _makeLevelCacheKey(gameId, login = null) {
+    const base = `${this.domain}_${gameId}`;
+    if (!login) {
+      return `${base}__shared`;
+    }
+    const normalized = String(login).trim().toLowerCase();
+    return normalized ? `${base}_${normalized}` : `${base}__shared`;
+  }
+
   // Получить данные уровня из кеша
-  _getLevelFromCache(gameId) {
-    const cacheKey = `${this.domain}_${gameId}`;
-    const cached = EncounterAPI.levelCache[cacheKey];
+  _getLevelFromCache(gameId, login = null) {
+    const cacheKey = this._makeLevelCacheKey(gameId, login);
+    let cached = EncounterAPI.levelCache[cacheKey];
+
+    if (!cached) {
+      const legacyKey = `${this.domain}_${gameId}`;
+      if (EncounterAPI.levelCache[legacyKey]) {
+        cached = EncounterAPI.levelCache[legacyKey];
+        delete EncounterAPI.levelCache[legacyKey];
+        EncounterAPI.levelCache[cacheKey] = cached;
+      }
+    }
 
     if (!cached) {
       return null;
@@ -68,8 +111,8 @@ class EncounterAPI {
   }
 
   // Сохранить данные уровня в кеш
-  _saveLevelToCache(gameId, levelData) {
-    const cacheKey = `${this.domain}_${gameId}`;
+  _saveLevelToCache(gameId, levelData, login = null) {
+    const cacheKey = this._makeLevelCacheKey(gameId, login);
     EncounterAPI.levelCache[cacheKey] = {
       levelId: levelData.LevelId,
       levelNumber: levelData.Number,
@@ -80,12 +123,29 @@ class EncounterAPI {
   }
 
   // Инвалидировать кеш уровня
-  _invalidateLevelCache(gameId, reason = '') {
-    const cacheKey = `${this.domain}_${gameId}`;
-    if (EncounterAPI.levelCache[cacheKey]) {
-      delete EncounterAPI.levelCache[cacheKey];
-      console.log(`🗑️ Кеш уровня инвалидирован${reason ? ': ' + reason : ''}`);
+  _invalidateLevelCache(gameId, reason = '', login = null) {
+    const baseKey = `${this.domain}_${gameId}`;
+    const keysToRemove = [];
+
+    if (login) {
+      keysToRemove.push(this._makeLevelCacheKey(gameId, login));
+    } else {
+      for (const key of Object.keys(EncounterAPI.levelCache)) {
+        if (key === baseKey || key.startsWith(`${baseKey}_`) || key.startsWith(`${baseKey}__`)) {
+          keysToRemove.push(key);
+        }
+      }
     }
+
+    if (keysToRemove.length === 0) {
+      return;
+    }
+
+    for (const key of keysToRemove) {
+      delete EncounterAPI.levelCache[key];
+    }
+
+    console.log(`🗑️ Кеш уровня инвалидирован${reason ? ': ' + reason : ''} (${keysToRemove.length})`);
   }
 
   // Авторизация пользователя по официальному API Encounter
@@ -272,8 +332,16 @@ class EncounterAPI {
 
           if (authResult.success) {
             console.log(`✅ Автоматическая реаутентификация успешна, повторяю запрос...`);
-            // Повторяем запрос с новыми cookies (isRetry=true чтобы избежать бесконечной рекурсии)
-            return await this.getGameState(gameId, authResult.cookies, login, password, true);
+            const mergedCookies = {
+              ...(authCookies || {}),
+              ...(authResult.cookies || {})
+            };
+            // Повторяем запрос с обновлёнными cookies (isRetry=true чтобы избежать бесконечной рекурсии)
+            const retryState = await this.getGameState(gameId, mergedCookies, login, password, true);
+            if (retryState && retryState.success) {
+              retryState.newCookies = mergedCookies;
+            }
+            return retryState;
           } else {
             // Реаутентификация не удалась - пробрасываем ошибку дальше
             const reAuthError = new Error(`Автоматическая реаутентификация не удалась: ${authResult.message}`);
@@ -336,7 +404,7 @@ class EncounterAPI {
       }
 
       // Пытаемся получить данные уровня из кеша
-      let levelData = this._getLevelFromCache(gameId);
+      let levelData = this._getLevelFromCache(gameId, login);
       let model = null;
 
       if (levelData) {
@@ -407,18 +475,18 @@ class EncounterAPI {
         // Подробная проверка состояния уровня согласно документации API
         if (level.IsPassed) {
           console.log(`✅ Уровень ${level.Number} уже пройден`);
-          this._invalidateLevelCache(gameId, 'уровень пройден');
+          this._invalidateLevelCache(gameId, 'уровень пройден', null);
           throw new Error(`Уровень ${level.Number} уже пройден`);
         }
 
         if (level.Dismissed) {
           console.log(`🚫 Уровень ${level.Number} снят администратором`);
-          this._invalidateLevelCache(gameId, 'уровень снят');
+          this._invalidateLevelCache(gameId, 'уровень снят', null);
           throw new Error(`Уровень ${level.Number} снят администратором`);
         }
 
         // Сохраняем данные уровня в кеш
-        this._saveLevelToCache(gameId, level);
+        this._saveLevelToCache(gameId, level, login);
         levelData = {
           levelId: level.LevelId,
           levelNumber: level.Number,
@@ -533,7 +601,7 @@ class EncounterAPI {
           message += ' 🎉 Уровень пройден!';
           console.log(`🏆 Уровень ${result.Level.Number} пройден!`);
           // Инвалидируем кеш - уровень изменился
-          this._invalidateLevelCache(gameId, 'уровень пройден');
+          this._invalidateLevelCache(gameId, 'уровень пройден', null);
         }
 
         // Если Event изменился (уровень изменился) - инвалидируем кеш
@@ -556,6 +624,10 @@ class EncounterAPI {
       };
 
     } catch (error) {
+      if (!isRetry) {
+        this._invalidateLevelCache(gameId, 'ошибка отправки ответа');
+      }
+
       // Если сессия истекла И есть данные для реаутентификации И это не повторная попытка
       if (error.needsAuth && login && password && !isRetry) {
         console.log(`🔄 Сессия истекла при отправке ответа, выполняю автоматическую реаутентификацию для ${login}...`);
@@ -565,10 +637,14 @@ class EncounterAPI {
 
           if (authResult.success) {
             console.log(`✅ Автоматическая реаутентификация успешна, повторяю отправку ответа...`);
-            // Повторяем отправку ответа с новыми cookies (isRetry=true чтобы избежать бесконечной рекурсии)
-            const retryResult = await this.sendAnswer(gameId, answer, authResult.cookies, login, password, true);
+            const mergedCookies = {
+              ...(authCookies || {}),
+              ...(authResult.cookies || {})
+            };
+            // Повторяем отправку ответа с обновлёнными cookies (isRetry=true чтобы избежать бесконечной рекурсии)
+            const retryResult = await this.sendAnswer(gameId, answer, mergedCookies, login, password, true);
             // Добавляем информацию о новых cookies для обновления в основном коде
-            retryResult.newCookies = authResult.cookies;
+            retryResult.newCookies = mergedCookies;
             return retryResult;
           } else {
             // Реаутентификация не удалась - пробрасываем ошибку дальше

@@ -1,4 +1,9 @@
 const fs = require('fs-extra');
+const {
+  encryptSecret,
+  decryptSecret,
+  isEncryptedSecret
+} = require('../utils/crypto');
 
 const DEFAULT_DATA_FILE = process.env.DATA_FILE || 'user_data.json';
 
@@ -19,6 +24,7 @@ const createEmptyUser = (platform, userId) => {
     authCookies: null,
     answerQueue: [],
     isOnline: true,
+    isProcessingQueue: false,
     telegramUsername: null,
     telegramFirstName: null,
     firstActivity: now,
@@ -122,6 +128,22 @@ async function loadUserData(customPath) {
           userInfo.lastActivity = now;
           migrationCount++;
         }
+        if (typeof userInfo.password === 'string' && userInfo.password) {
+          if (!isEncryptedSecret(userInfo.password)) {
+            migrationCount++;
+          }
+          try {
+            userInfo.password = decryptSecret(userInfo.password);
+          } catch (error) {
+            throw new Error(`Не удалось расшифровать пароль для ${rawKey}: ${error.message}`);
+          }
+        }
+        if (!userInfo.hasOwnProperty('isProcessingQueue')) {
+          userInfo.isProcessingQueue = false;
+          migrationCount++;
+        } else if (userInfo.isProcessingQueue) {
+          userInfo.isProcessingQueue = false;
+        }
 
         const storageKey = makeStorageKey(platform, userId);
 
@@ -152,11 +174,17 @@ async function saveUserData(customPath) {
   try {
     const data = {};
     for (const [key, value] of userData.entries()) {
-      data[key] = value;
+      const sanitizedUser = { ...value };
+      delete sanitizedUser.isProcessingQueue;
+      if (typeof sanitizedUser.password === 'string' && sanitizedUser.password) {
+        sanitizedUser.password = encryptSecret(sanitizedUser.password);
+      }
+      data[key] = sanitizedUser;
     }
     await fs.writeJson(targetPath, data, { spaces: 2 });
   } catch (error) {
     console.error('Ошибка сохранения данных пользователей:', error);
+    throw error;
   }
 }
 

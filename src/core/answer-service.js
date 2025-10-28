@@ -33,7 +33,10 @@ function createAnswerService(deps) {
 
       if (result.newCookies) {
         console.log('🔄 Cookies обновлены после автоматической реаутентификации');
-        user.authCookies = result.newCookies;
+        user.authCookies = {
+          ...(user.authCookies || {}),
+          ...(result.newCookies || {})
+        };
         await saveUserData();
       }
 
@@ -171,148 +174,223 @@ function createAnswerService(deps) {
   async function processAnswerQueue(platform, userId) {
     const user = getUserInfo(platform, userId);
     const queue = getAnswerQueue(platform, userId);
+    const MAX_UNKNOWN_ERROR_ATTEMPTS = 3;
 
-    if (queue.length === 0) {
+    if (!queue || queue.length === 0) {
       return;
     }
 
-    const totalAnswers = queue.length;
-    let processed = 0;
-    let successful = 0;
-    let skipped = 0;
+    if (user.isProcessingQueue) {
+      console.log(`⏭️ Очередь уже обрабатывается для ${platform}:${userId}`);
+      return;
+    }
 
-    const queueMessage = await sendMessage(platform, 
-      userId,
-      `🔄 Подготовка к обработке очереди из ${totalAnswers} ответов...`
-    );
+    user.isProcessingQueue = true;
 
-    console.log('⏱️ Задержка 3 секунды перед началом обработки очереди...');
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    try {
+      const totalAnswers = queue.length;
+      let processed = 0;
+      let successful = 0;
+      let skipped = 0;
 
-    await sendOrUpdateMessage(platform, userId,
-      `🔄 Обрабатываю очередь из ${totalAnswers} ответов...`,
-      queueMessage.message_id
-    );
+      const queueMessage = await sendMessage(platform,
+        userId,
+        `🔄 Подготовка к обработке очереди из ${totalAnswers} ответов...`
+      );
 
-    for (let i = 0; i < queue.length; i++) {
-      const queueItem = queue[i];
-      processed++;
+      console.log('⏱️ Задержка 3 секунды перед началом обработки очереди...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
       await sendOrUpdateMessage(platform, userId,
-        `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n⏳ Отправляю "${queueItem.answer}"...`,
+        `🔄 Обрабатываю очередь из ${totalAnswers} ответов...`,
         queueMessage.message_id
       );
 
-      try {
-        const response = await sendToEncounterAPI(user, queueItem.answer);
+      const PROGRESS_UPDATE_EVERY = 4;
+      const PROGRESS_UPDATE_MIN_INTERVAL = 5000;
+      let progressUpdatesSinceLastSend = 0;
+      let lastProgressUpdateAt = Date.now();
+      let pendingProgressText = null;
 
-        if (response.success) {
-          successful++;
-          queue.splice(i, 1);
-          i--;
+      async function pushProgress(text, { force = false } = {}) {
+        pendingProgressText = text;
+        progressUpdatesSinceLastSend += 1;
 
-          await sendOrUpdateMessage(platform, userId,
-            `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n✅ Ответ отправлен`,
-            queueMessage.message_id
-          );
-        } else {
-          throw new Error('Ошибка отправки');
+        const now = Date.now();
+        const shouldSend =
+          force ||
+          (now - lastProgressUpdateAt) >= PROGRESS_UPDATE_MIN_INTERVAL ||
+          progressUpdatesSinceLastSend >= PROGRESS_UPDATE_EVERY;
+
+        if (!shouldSend) {
+          return;
         }
-      } catch (error) {
-        console.error('Ошибка обработки очереди:', error);
 
-        const ignorableErrors = [
-          'Event не определен',
-          'Неизвестная ошибка игры',
-          'Уровень изменился',
-          'некорректные данные'
-        ];
+        await sendOrUpdateMessage(platform, userId, pendingProgressText, queueMessage.message_id);
+        lastProgressUpdateAt = Date.now();
+        progressUpdatesSinceLastSend = 0;
+        pendingProgressText = null;
+      }
 
-        const authErrors = [
-          'Требуется повторная авторизация',
-          'сессия истекла'
-        ];
+      for (let i = 0; i < queue.length; i++) {
+        const queueItem = queue[i];
+        processed++;
 
-        const errorMessage = error.message?.toLowerCase?.() || '';
-        const isIgnorableError = ignorableErrors.some(errType => errorMessage.includes(errType.toLowerCase()));
-        const isAuthError = authErrors.some(errType => errorMessage.includes(errType.toLowerCase()));
+        await pushProgress(
+          `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n⏳ Отправляю "${queueItem.answer}"...`,
+          { force: processed === 1 }
+        );
 
-        if (isIgnorableError) {
-          console.log(`⚠️ Пропускаем ответ "${queueItem.answer}" из-за устаревших данных`);
-          skipped++;
+        try {
+          const response = await sendToEncounterAPI(user, queueItem.answer);
 
-          await sendOrUpdateMessage(platform, userId,
-            `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n⚠️ Пропущен устаревший ответ`,
-            queueMessage.message_id
-          );
-
-          queue.splice(i, 1);
-          i--;
-        } else if (isAuthError) {
-          console.log(`🔒 Проблема авторизации в очереди: ${error.message}`);
-
-          await sendOrUpdateMessage(platform, userId,
-            `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n🔒 Переавторизация для "${queueItem.answer}"...`,
-            queueMessage.message_id
-          );
-
-          try {
-            user.authCookies = null;
-            await saveUserData();
-
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            await sendOrUpdateMessage(platform, userId,
-              `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n🔄 Повторяю "${queueItem.answer}"...`,
-              queueMessage.message_id
-            );
-
-            i--;
-            processed--;
-
-            console.log(`🔄 Повторяем отправку ответа "${queueItem.answer}" после переавторизации`);
-          } catch (authError) {
-            console.error('Ошибка переавторизации в очереди:', authError);
-
-            const isMessageNotModifiedError = authError.code === 'ETELEGRAM' &&
-              authError.response?.body?.description?.includes('message is not modified');
-
-            if (!isMessageNotModifiedError) {
-              console.log(`⚠️ Пропускаем ответ "${queueItem.answer}" из-за ошибки переавторизации`);
-            }
-
-            skipped++;
+          if (response.success) {
+            successful++;
             queue.splice(i, 1);
             i--;
+
+            await pushProgress(
+              `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n✅ Ответ отправлен`
+            );
+          } else {
+            throw new Error('Ошибка отправки');
           }
-        } else {
-          await sendOrUpdateMessage(platform, userId,
-            `❌ Ошибка обработки очереди: ${error.message}\n📊 Обработано: ${successful}/${totalAnswers}`,
-            queueMessage.message_id
-          );
-          break;
+        } catch (error) {
+          console.error('Ошибка обработки очереди:', error);
+
+          const ignorableErrors = [
+            'Event не определен',
+            'Неизвестная ошибка игры',
+            'Уровень изменился',
+            'некорректные данные'
+          ];
+
+          const authErrors = [
+            'Требуется повторная авторизация',
+            'сессия истекла'
+          ];
+
+          const errorMessage = error.message?.toLowerCase?.() || '';
+          const isIgnorableError = ignorableErrors.some(errType => errorMessage.includes(errType.toLowerCase()));
+          const isAuthError = authErrors.some(errType => errorMessage.includes(errType.toLowerCase()));
+
+          if (isIgnorableError) {
+            console.log(`⚠️ Пропускаем ответ "${queueItem.answer}" из-за устаревших данных`);
+            skipped++;
+
+            await pushProgress(
+              `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n⚠️ Пропущен устаревший ответ`,
+              { force: true }
+            );
+
+            queue.splice(i, 1);
+            i--;
+          } else if (isAuthError) {
+            console.log(`🔒 Проблема авторизации в очереди: ${error.message}`);
+
+            await pushProgress(
+              `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n🔒 Переавторизация для "${queueItem.answer}"...`,
+              { force: true }
+            );
+
+            try {
+              user.authCookies = null;
+              await saveUserData();
+
+              await new Promise(resolve => setTimeout(resolve, 2000));
+
+              await pushProgress(
+                `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n🔄 Повторяю "${queueItem.answer}"...`,
+                { force: true }
+              );
+
+              i--;
+              processed--;
+
+              console.log(`🔄 Повторяем отправку ответа "${queueItem.answer}" после переавторизации`);
+            } catch (authError) {
+              console.error('Ошибка переавторизации в очереди:', authError);
+
+              const isMessageNotModifiedError = authError.code === 'ETELEGRAM' &&
+                authError.response?.body?.description?.includes('message is not modified');
+
+              if (!isMessageNotModifiedError) {
+                console.log(`⚠️ Пропускаем ответ "${queueItem.answer}" из-за ошибки переавторизации`);
+              }
+
+              skipped++;
+              queue.splice(i, 1);
+              i--;
+            }
+          } else {
+            const errorDetails = error.message || 'Неизвестная ошибка';
+            queueItem.failedAttempts = (queueItem.failedAttempts || 0) + 1;
+            queueItem.lastError = errorDetails;
+
+            if (queueItem.failedAttempts >= MAX_UNKNOWN_ERROR_ATTEMPTS) {
+              console.log(`🗑️ Удаляем ответ "${queueItem.answer}" после ${MAX_UNKNOWN_ERROR_ATTEMPTS} неудачных попыток`);
+              skipped++;
+
+              await pushProgress(
+                `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n⚠️ Ошибка для "${queueItem.answer}": ${errorDetails}\n🗑️ Ответ удалён после ${MAX_UNKNOWN_ERROR_ATTEMPTS} неудачных попыток`,
+                { force: true }
+              );
+
+              queue.splice(i, 1);
+              i--;
+            } else {
+              await pushProgress(
+                `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n⚠️ Ошибка для "${queueItem.answer}": ${errorDetails}\n🔁 Попытка ${queueItem.failedAttempts}/${MAX_UNKNOWN_ERROR_ATTEMPTS} — оставляю в очереди`,
+                { force: true }
+              );
+            }
+          }
+        }
+
+        if (i < queue.length - 1 || processed < totalAnswers) {
+          console.log('⏱️ Задержка 1.2 секунды перед следующим ответом...');
+          await new Promise(resolve => setTimeout(resolve, 1200));
+
+          if (pendingProgressText) {
+            await pushProgress(pendingProgressText);
+          }
         }
       }
 
-      if (i < queue.length - 1 || processed < totalAnswers) {
-        console.log('⏱️ Задержка 1.2 секунды перед следующим ответом...');
-        await new Promise(resolve => setTimeout(resolve, 1200));
+      if (pendingProgressText) {
+        await pushProgress(pendingProgressText, { force: true });
       }
-    }
 
-    if (queue.length === 0) {
-      user.isOnline = true;
+      if (queue.length === 0) {
+        user.isOnline = true;
 
-      let finalMessage = `✅ Обработка очереди завершена!\n📊 Результат: ${successful} отправлено`;
-      if (skipped > 0) {
-        finalMessage += `, ${skipped} пропущено`;
+        let finalMessage = `✅ Обработка очереди завершена!\n📊 Результат: ${successful} отправлено`;
+        if (skipped > 0) {
+          finalMessage += `, ${skipped} пропущено`;
+        }
+        finalMessage += ` из ${totalAnswers}`;
+
+        await sendOrUpdateMessage(platform, userId, finalMessage, queueMessage.message_id);
+      } else {
+        const remainingWithErrors = queue.filter(item => item.failedAttempts);
+        let finalMessage = `⚠️ Обработка очереди завершена с ошибками.\n📊 Отправлено: ${successful}/${totalAnswers}`;
+        if (skipped > 0) {
+          finalMessage += `, удалено: ${skipped}`;
+        }
+        finalMessage += `\n⏳ В очереди осталось: ${queue.length}`;
+        if (remainingWithErrors.length > 0) {
+          const failedList = remainingWithErrors
+            .map(item => `"${item.answer}" (${item.failedAttempts} попыток)`)
+            .join(', ');
+          finalMessage += `\n⚠️ Требуют внимания: ${failedList}`;
+        }
+
+        await sendOrUpdateMessage(platform, userId, finalMessage, queueMessage.message_id);
       }
-      finalMessage += ` из ${totalAnswers}`;
-
-      await sendOrUpdateMessage(platform, userId, finalMessage, queueMessage.message_id);
+    } finally {
+      user.isProcessingQueue = false;
+      await saveUserData();
     }
-
-    await saveUserData();
   }
 
   return {
@@ -325,7 +403,3 @@ function createAnswerService(deps) {
 module.exports = {
   createAnswerService
 };
-
-
-
-
