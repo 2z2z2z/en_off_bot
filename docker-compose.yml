@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   en-offline-bot:
@@ -9,12 +9,15 @@ services:
       - NODE_ENV=production
       - DATA_FILE=/app/data/user_data.json
       - BOT_TOKEN=${BOT_TOKEN}
+      - VK_GROUP_TOKEN=${VK_GROUP_TOKEN}
+      - VK_GROUP_ID=${VK_GROUP_ID}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    env_file:
+      - .env
     volumes:
-      # Постоянное хранение данных пользователей
       - bot_data:/app/data
     networks:
       - bot_network
-    # Healthcheck для мониторинга
     healthcheck:
       test: ["CMD", "node", "-e", "console.log('Bot is running')"]
       interval: 30s

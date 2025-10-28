@@ -28,7 +28,7 @@ cd en_off_bot
 
 # 5. Настраиваем переменные окружения
 cp config.env.example .env
-nano .env  # Укажите ваш BOT_TOKEN
+nano .env  # Укажите BOT_TOKEN (обязательно) и VK_* при необходимости
 
 # 6. Устанавливаем зависимости
 npm install
@@ -58,6 +58,8 @@ cd en_off_bot
 
 # 4. Настройка переменных
 echo "BOT_TOKEN=your_bot_token_here" > .env
+echo "VK_GROUP_TOKEN=your_vk_token_here" >> .env   # опционально
+echo "VK_GROUP_ID=123456789" >> .env              # опционально
 
 # 5. Запуск
 docker-compose up -d
@@ -247,6 +249,6 @@ chmod +x update.sh
 При проблемах с развертыванием:
 
 1. Проверьте логи: `pm2 logs` или `docker-compose logs`
-2. Убедитесь что BOT_TOKEN правильный
+2. Убедитесь что BOT_TOKEN (и при необходимости VK_GROUP_TOKEN/VK_GROUP_ID) указаны корректно
 3. Проверьте доступность интернета: `ping api.telegram.org`
 4. Создайте Issue в GitHub репозитории

@@ -1,24 +1,806 @@
-const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
 const fs = require('fs-extra');
-const path = require('path');
+const {
+  userData,
+  loadUserData,
+  saveUserData,
+  getUserInfo,
+  isUserReady,
+  updateUserActivity,
+  getAnswerQueue,
+  enqueueAnswer,
+  deleteUser,
+  makeStorageKey
+} = require('./src/core/user-store');
 const EncounterAPI = require('./encounter-api');
+const { createAnswerService } = require('./src/core/answer-service');
+const {
+  registerTransport,
+  sendMessage: sendPlatformMessage,
+  editMessage: editPlatformMessage,
+  deleteMessage: deletePlatformMessage,
+  sendTyping: sendPlatformTyping,
+  answerCallback: answerPlatformCallback
+} = require('./src/core/messenger');
+const { TelegramAdapter } = require('./src/platforms/telegram/telegram-adapter');
+const { VkAdapter } = require('./src/platforms/vk');
+const { PlatformEventType, OutboundMessageType } = require('./src/platforms/platform-types');
 
 // Загрузка переменных окружения
 require('dotenv').config();
 
-// Токен Telegram бота из переменной окружения
-const BOT_TOKEN = process.env.BOT_TOKEN || '8239956764:AAH78W5Vvc47a_EhnL7XcLtRwVhmj8s5Q4Y';
+// Токен Telegram бота из переменной окружения (обязателен)
+const BOT_TOKEN = process.env.BOT_TOKEN;
 
-// Тестовый бот
-// const BOT_TOKEN = process.env.BOT_TOKEN || '7729425234:AAFp-r5wN8fOANx5DVU1xJ94L5sW0rAjxeU';
+if (!BOT_TOKEN) {
+  console.error('❌ Не задан BOT_TOKEN. Добавьте токен бота в .env или переменные окружения.');
+  process.exit(1);
+}
 
-// Создаем экземпляр бота
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+// Telegram адаптер и экземпляр бота
+const telegramAdapter = new TelegramAdapter({ token: BOT_TOKEN });
+let bot = null;
+let sendToEncounterAPI = null;
+let sendAnswerToEncounter = null;
+let processAnswerQueue = null;
+let vkAdapterInstance = null;
+const TELEGRAM_PLATFORM = telegramAdapter.name;
+const VK_GROUP_TOKEN = process.env.VK_GROUP_TOKEN || '';
+const VK_GROUP_ID = process.env.VK_GROUP_ID ? Number(process.env.VK_GROUP_ID) : null;
+const VK_PLATFORM = 'vk';
 
-// Состояния пользователей
 const userStates = new Map();
-const userData = new Map();
+
+const getStateKey = (platform, userId) => makeStorageKey(platform, userId);
+const getUserState = (platform, userId) => userStates.get(getStateKey(platform, userId));
+const setUserState = (platform, userId, state) => userStates.set(getStateKey(platform, userId), state);
+const clearUserState = (platform, userId) => userStates.delete(getStateKey(platform, userId));
+
+const getPlatformUser = (platform, userId) => getUserInfo(platform, userId);
+const isPlatformUserReady = (platform, userId) => isUserReady(platform, userId);
+const updatePlatformActivity = (platform, userId, username, firstName) =>
+  updateUserActivity(platform, userId, username, firstName);
+
+const sendMessage = (platform, userId, text, options = {}) =>
+  sendPlatformMessage(platform, userId, text, options);
+
+const editMessage = (platform, userId, messageId, text, options = {}) =>
+  editPlatformMessage(platform, userId, messageId, text, options);
+
+const deleteMessage = (platform, userId, messageId) =>
+  deletePlatformMessage(platform, userId, messageId);
+
+const sendTyping = (platform, userId) =>
+  sendPlatformTyping(platform, userId);
+
+const answerCallback = (platform, data = {}) =>
+  answerPlatformCallback(platform, data);
+
+const editTelegramMessage = (arg1, arg2, arg3, arg4) => {
+  if (typeof arg3 === 'undefined' && typeof arg2 === 'object') {
+    const options = arg2 || {};
+    return editMessage(TELEGRAM_PLATFORM, options.chat_id, options.message_id, arg1, options);
+  }
+  const options = arg4 || {};
+  return editMessage(TELEGRAM_PLATFORM, arg1, arg2, arg3, options);
+};
+
+const answerTelegramCallback = (queryId, options = {}) =>
+  answerCallback(TELEGRAM_PLATFORM, { queryId, ...options });
+
+function createTelegramContext(msg, overrides = {}) {
+  const chatId = String(msg.chat?.id ?? '');
+  return {
+    platform: TELEGRAM_PLATFORM,
+    userId: chatId,
+    text: msg.text ?? '',
+    from: msg.from
+      ? {
+          id: msg.from.id,
+          username: msg.from.username,
+          firstName: msg.from.first_name,
+          lastName: msg.from.last_name
+        }
+      : null,
+    meta: {
+      chatId: msg.chat?.id,
+      messageId: msg.message_id,
+      chatType: msg.chat?.type,
+      chat: msg.chat,
+      raw: msg
+    },
+    ...overrides
+  };
+}
+
+function createTelegramCallbackContext(query, overrides = {}) {
+  const chatId = query.message?.chat?.id ?? query.from?.id;
+  const messageId = query.message?.message_id;
+  return {
+    platform: TELEGRAM_PLATFORM,
+    userId: String(chatId ?? ''),
+    text: query.data ?? '',
+    payload: query.data,
+    meta: {
+      chatId,
+      messageId,
+      queryId: query.id,
+      raw: query,
+      from: query.from,
+      message: query.message
+    },
+    ...overrides
+  };
+}
+
+async function handleResetCommand(context) {
+  const { platform, userId } = context;
+  deleteUser(platform, userId);
+  clearUserState(platform, userId);
+  await saveUserData();
+
+  await sendMessage(platform, userId,
+    '🔄 Данные сброшены!\n\n' +
+    'Все настройки удалены. Используйте /start для повторной настройки.'
+  );
+}
+
+async function handleTestCommand(context) {
+  const { platform, userId } = context;
+  const user = getPlatformUser(platform, userId);
+
+  if (!isPlatformUserReady(platform, userId)) {
+    await sendMessage(platform, userId, '❌ Сначала настройте бота командой /start');
+    return;
+  }
+
+  await sendMessage(platform, userId, '🔄 Тестирую подключение...');
+
+  try {
+    const api = new EncounterAPI(user.domain);
+    const isConnected = await api.checkConnection();
+
+    if (!isConnected) {
+      await sendMessage(platform, userId, `❌ Не удается подключиться к домену ${user.domain}`);
+      return;
+    }
+
+    let authResult = { success: false };
+
+    if (user.authCookies && Object.keys(user.authCookies).length > 0) {
+      console.log('📋 Используем сохраненную авторизацию для /test');
+      authResult = { success: true, cookies: user.authCookies };
+    } else {
+      console.log('🔐 Выполняем новую авторизацию для /test');
+      authResult = await api.authenticate(user.login, user.password);
+      if (authResult.success) {
+        user.authCookies = authResult.cookies;
+        await saveUserData();
+      }
+    }
+
+    if (!authResult.success) {
+      await sendMessage(platform, userId, `⚠️ Подключение есть, но ошибка авторизации: ${authResult.message}`);
+      return;
+    }
+
+    const gameInfo = await api.getGameInfo(user.gameId, user.authCookies, user.login, user.password);
+
+    if (!gameInfo.success) {
+      await sendMessage(platform, userId,
+        `✅ Подключение и авторизация успешны!\n` +
+        `⚠️ Не удалось получить информацию об игре: ${gameInfo.error}\n\n` +
+        `Попробуйте отправить тестовый ответ.`
+      );
+      return;
+    }
+
+    const data = gameInfo.data;
+    await sendMessage(platform, userId,
+      `✅ Тест успешен!\n\n` +
+      `🌐 Подключение: ОК\n` +
+      `🔐 Авторизация: ОК\n` +
+      `🎮 Игра: ${data.name} (№${data.number})\n` +
+      `👤 Игрок: ${data.login}\n` +
+      `👥 Команда: ${data.team || 'Личная игра'}\n` +
+      `📊 Статус: ${data.status === 'active' ? 'Активна' : 'Неактивна'}\n` +
+      (data.level
+        ? `🏆 Уровень: ${data.level.name} (№${data.level.number})\n` +
+          `📈 Сектора: ${data.level.sectorsPassed}/${data.level.sectorsTotal}\n`
+        : '') +
+      `\nГотов к отправке ответов!`
+    );
+  } catch (error) {
+    await sendMessage(platform, userId, `❌ Ошибка тестирования: ${error.message}`);
+  }
+}
+
+async function handleAdminCommand(context) {
+  const { platform, userId } = context;
+
+  if (platform !== TELEGRAM_PLATFORM) {
+    await sendMessage(platform, userId, '❌ Админ-панель доступна только в Telegram');
+    return;
+  }
+
+  const numericId = Number(userId);
+  if (numericId !== ROOT_USER_ID) {
+    await sendMessage(platform, userId, '❌ У вас нет доступа к админ-панели');
+    return;
+  }
+
+  await showAdminMainMenu(userId);
+}
+
+async function handleCancelCommand(context) {
+  const { platform, userId } = context;
+  const currentState = getUserState(platform, userId);
+
+  if (currentState) {
+    clearUserState(platform, userId);
+    await sendMessage(platform, userId, '❌ Действие отменено');
+  } else {
+    await sendMessage(platform, userId, 'Нет активных действий для отмены');
+  }
+}
+
+async function handleStartCommand(context) {
+  const { platform, userId } = context;
+  const user = getPlatformUser(platform, userId);
+
+  if (isPlatformUserReady(platform, userId)) {
+    setUserState(platform, userId, STATES.READY);
+    const message =
+      'Добро пожаловать в en_off_bot! 🎮\n\n' +
+      'Вы уже настроили бота:\n' +
+      `👤 Логин: ${user.login}\n` +
+      `🌐 Домен: ${user.domain}\n` +
+      `🎯 ID игры: ${user.gameId}\n\n` +
+      'Теперь вы можете отправлять ответы!';
+    const keyboardOptions = createMainKeyboard(platform);
+    await sendMessage(platform, userId, message, keyboardOptions);
+  } else {
+    setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
+    const message =
+      'Добро пожаловать в en_off_bot! 🎮\n\n' +
+      'Этот бот поможет вам отправлять ответы в игру Encounter, даже если у вас временно нет интернета.\n\n' +
+      'Для начала мне нужно настроить авторизацию.\n' +
+      'Введите ваш логин:';
+    await sendMessage(platform, userId, message);
+  }
+}
+
+async function handleCommand(context) {
+  const command = (context.commandName || '').toLowerCase();
+
+  switch (command) {
+    case 'reset':
+      await handleResetCommand(context);
+      break;
+    case 'test':
+      await handleTestCommand(context);
+      break;
+    case 'admin':
+      await handleAdminCommand(context);
+      break;
+    case 'cancel':
+      await handleCancelCommand(context);
+      break;
+    case 'start':
+      await handleStartCommand(context);
+      break;
+    default:
+      break;
+  }
+}
+
+async function handleCallback(context) {
+  const { platform, userId, payload = '', meta = {} } = context;
+
+  if (platform !== TELEGRAM_PLATFORM) {
+    return;
+  }
+
+  const chatId = meta.chatId ?? userId;
+  const messageId = meta.messageId;
+  const queryId = meta.queryId;
+  const data = typeof payload === 'string' ? payload : '';
+
+  if (!data) {
+    if (queryId) {
+      await answerCallback(platform, { queryId });
+    }
+    return;
+  }
+
+  if (data.startsWith('admin_') && Number(chatId) !== ROOT_USER_ID) {
+    if (queryId) {
+      await answerCallback(platform, {
+        queryId,
+        text: '❌ У вас нет доступа',
+        show_alert: true
+      });
+    }
+    return;
+  }
+
+  try {
+    if (data.startsWith('admin_users_')) {
+      const page = parseInt(data.split('_')[2], 10) || 0;
+      await showUsersList(chatId, messageId, page);
+      if (queryId) await answerCallback(platform, { queryId });
+    } else if (data === 'admin_moderation') {
+      await showModerationMenu(chatId, messageId);
+      if (queryId) await answerCallback(platform, { queryId });
+    } else if (data.startsWith('admin_whitelist_')) {
+      const page = parseInt(data.split('_')[2], 10) || 0;
+      clearUserState(platform, userId);
+      await showWhitelistMenu(chatId, messageId, page);
+      if (queryId) await answerCallback(platform, { queryId });
+    } else if (data === 'admin_back') {
+      clearUserState(platform, userId);
+      if (messageId) {
+        await deleteMessage(platform, chatId, messageId);
+      }
+      await showAdminMainMenu(chatId);
+      if (queryId) await answerCallback(platform, { queryId });
+    } else if (data === 'moderation_toggle') {
+      adminConfig.moderationEnabled = !adminConfig.moderationEnabled;
+      await saveAdminConfig();
+      await showModerationMenu(chatId, messageId);
+      if (queryId) {
+        await answerCallback(platform, {
+          queryId,
+          text: adminConfig.moderationEnabled ? '✅ Модерация включена' : '❌ Модерация выключена'
+        });
+      }
+    } else if (data === 'whitelist_add') {
+      await handleWhitelistAdd(chatId, messageId);
+      if (queryId) await answerCallback(platform, { queryId });
+    } else if (data.startsWith('whitelist_remove_')) {
+      const index = parseInt(data.split('_')[2], 10);
+      await handleWhitelistRemove(chatId, messageId, index, queryId);
+      if (queryId) {
+        await answerCallback(platform, {
+          queryId,
+          text: '🗑️ Удалено из белого списка'
+        });
+      }
+    } else if (queryId) {
+      await answerCallback(platform, { queryId });
+    }
+  } catch (error) {
+    console.error('Ошибка обработки callback_query:', error);
+    if (queryId) {
+      await answerCallback(platform, {
+        queryId,
+        text: '❌ Ошибка обработки команды',
+        show_alert: true
+      });
+    }
+  }
+}
+
+async function handleTextMessage(context) {
+  const { platform, userId, text = '', from } = context;
+  const messageText = text != null ? String(text) : '';
+
+  updatePlatformActivity(platform, userId, from?.username, from?.firstName);
+
+  if (messageText.startsWith('/')) {
+    return;
+  }
+
+  const user = getPlatformUser(platform, userId);
+  let currentState = getUserState(platform, userId);
+
+  if (!currentState) {
+    if (isPlatformUserReady(platform, userId)) {
+      currentState = STATES.READY;
+      setUserState(platform, userId, STATES.READY);
+    } else {
+      currentState = STATES.WAITING_FOR_LOGIN;
+    }
+  }
+
+  if (
+    currentState === 'WAITING_FOR_WHITELIST_ENTRY' &&
+    platform === TELEGRAM_PLATFORM &&
+    Number(userId) === ROOT_USER_ID
+  ) {
+    await handleWhitelistManualEntry(platform, userId, messageText.trim());
+    return;
+  }
+
+  await processStateInput(platform, userId, user, currentState, messageText, context);
+}
+
+async function handleWhitelistManualEntry(platform, userId, loginInput) {
+  if (platform !== TELEGRAM_PLATFORM) {
+    return;
+  }
+
+  const login = loginInput.trim();
+
+  if (login.length < 2) {
+    await sendMessage(platform, userId, '❌ Логин должен содержать минимум 2 символа');
+    return;
+  }
+
+  const exists = adminConfig.whitelist.some(item => {
+    const itemLogin = item.login || (item.type === 'encounter' ? item.value : null);
+    return itemLogin && itemLogin.toLowerCase() === login.toLowerCase();
+  });
+
+  if (exists) {
+    await sendMessage(platform, userId, '⚠️ Этот логин уже есть в белом списке');
+    clearUserState(platform, userId);
+    return;
+  }
+
+  adminConfig.whitelist.push({
+    login,
+    addedBy: userId,
+    addedAt: Date.now()
+  });
+
+  await saveAdminConfig();
+  await sendMessage(platform, userId, `✅ Добавлено в белый список:\n🎮 <code>${login}</code>`, {
+    parse_mode: 'HTML'
+  });
+
+  clearUserState(platform, userId);
+}
+
+async function processStateInput(platform, userId, user, currentState, text, context) {
+  switch (currentState) {
+    case STATES.WAITING_FOR_LOGIN:
+      await handleLoginInput(platform, userId, user, text);
+      break;
+    case STATES.WAITING_FOR_PASSWORD:
+      await handlePasswordInput(platform, userId, user, text);
+      break;
+    case STATES.WAITING_FOR_GAME_URL:
+      await handleGameUrlInput(platform, userId, user, text);
+      break;
+    case STATES.READY:
+      await handleReadyStateInput(platform, userId, user, text, context);
+      break;
+    default:
+      await sendMessage(platform, userId, '⚠️ Неизвестное состояние. Используйте /start для повторной настройки.');
+      setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
+      break;
+  }
+}
+
+async function handleLoginInput(platform, userId, user, text) {
+  user.login = text;
+  setUserState(platform, userId, STATES.WAITING_FOR_PASSWORD);
+  await sendMessage(platform, userId, `Логин сохранен: ${text}\nТеперь введите пароль:`);
+}
+
+async function handlePasswordInput(platform, userId, user, text) {
+  user.password = text;
+
+  if (!user.login || !user.password || user.login.length < 2 || user.password.length < 2) {
+    setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
+    await sendMessage(platform, userId, '❌ Логин и пароль должны содержать минимум 2 символа.\nВведите логин еще раз:');
+    return;
+  }
+
+  await sendMessage(platform, userId, '🔄 Проверяю данные авторизации...');
+
+  try {
+    const authResult = await checkAuthentication(user.login, user.password);
+
+    if (authResult.success) {
+      user.authCookies = authResult.cookies;
+      await saveUserData();
+      setUserState(platform, userId, STATES.WAITING_FOR_GAME_URL);
+      await sendMessage(platform, userId,
+        '✅ Авторизация успешна!\nТеперь пришлите ссылку на игру Encounter.\n\n' +
+        'Поддерживаемые форматы:\n' +
+        '• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n' +
+        '• https://domain.en.cx/gameengines/encounter/play/XXXXX/'
+      );
+    } else {
+      setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
+      await sendMessage(platform, userId, `❌ ${authResult.message}\nВведите логин еще раз:`);
+    }
+  } catch (error) {
+    setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
+    await sendMessage(platform, userId, `❌ Ошибка проверки авторизации: ${error.message}\nВведите логин еще раз:`);
+  }
+}
+
+async function handleGameUrlInput(platform, userId, user, text) {
+  if (!(await checkGameAccess(platform, userId))) {
+    return;
+  }
+
+  const gameUrlResult = parseGameUrl(text);
+
+  if (!gameUrlResult.success) {
+    await sendMessage(platform, userId, `❌ ${gameUrlResult.message}\n\nПопробуйте еще раз:`);
+    return;
+  }
+
+  if (user.domain && user.domain !== gameUrlResult.domain) {
+    console.log(`🔄 Домен изменился с ${user.domain} на ${gameUrlResult.domain}, сбрасываем cookies`);
+    user.authCookies = null;
+  }
+
+  user.domain = gameUrlResult.domain;
+  user.gameId = gameUrlResult.gameId;
+  setUserState(platform, userId, STATES.READY);
+  await saveUserData();
+
+  const message =
+    '🎉 Настройка завершена!\n\n' +
+    `👤 Логин: ${user.login}\n` +
+    `🌐 Домен: ${user.domain}\n` +
+    `🎮 ID игры: ${user.gameId}\n` +
+    `🔗 Тип ссылки: ${gameUrlResult.type}\n\n` +
+    'Теперь вы можете отправлять ответы! Просто напишите ответ в чат.';
+
+  const keyboardOptions = createMainKeyboard(platform);
+  await sendMessage(platform, userId, message, keyboardOptions);
+}
+
+async function handleReadyStateInput(platform, userId, user, text, context) {
+  if (text === 'Задание' || text === 'Задание (формат)') {
+    const formatted = text === 'Задание (формат)';
+    await sendLevelTask(platform, userId, user, formatted);
+    return;
+  }
+
+  if (text === 'Сектора') {
+    if (!(await checkGameAccess(platform, userId))) {
+      return;
+    }
+
+    const waitMsg = await sendMessage(platform, userId, '🔄 Получаю список секторов...');
+    try {
+      const api = new EncounterAPI(user.domain);
+
+      if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
+        const auth = await api.authenticate(user.login, user.password);
+        if (!auth.success) {
+          throw new Error(auth.message || 'Не удалось авторизоваться');
+        }
+        user.authCookies = auth.cookies;
+        await saveUserData();
+      }
+
+      let gameState;
+      try {
+        gameState = await api.getGameState(user.gameId, user.authCookies);
+      } catch (e) {
+        const msg = String(e.message || '').toLowerCase();
+        if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
+          const reauth = await api.authenticate(user.login, user.password);
+          if (!reauth.success) {
+            throw new Error(reauth.message || 'Не удалось авторизоваться');
+          }
+          user.authCookies = reauth.cookies;
+          await saveUserData();
+          gameState = await api.getGameState(user.gameId, user.authCookies);
+        } else {
+          throw e;
+        }
+      }
+
+      if (!gameState || !gameState.success) {
+        throw new Error('Не удалось получить состояние игры');
+      }
+
+      let model = gameState.data;
+      if (model.Event !== 0) {
+        if (model.Event === 16) {
+          gameState = await api.getGameState(user.gameId, user.authCookies);
+          if (!gameState.success || gameState.data.Event !== 0) {
+            await sendOrUpdateMessage(platform, userId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg?.message_id);
+            return;
+          }
+          model = gameState.data;
+        } else {
+          await sendOrUpdateMessage(platform, userId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg?.message_id);
+          return;
+        }
+      }
+
+      const level = model.Level;
+      if (!level) {
+        await sendOrUpdateMessage(platform, userId, '⚠️ Активный уровень не найден.', waitMsg?.message_id);
+        return;
+      }
+
+      const sectors = Array.isArray(level.Sectors) ? level.Sectors : [];
+      const totalRequired = Number(level.RequiredSectorsCount) || 0;
+      const passedCount = Number(level.PassedSectorsCount) || 0;
+      const leftToClose = Math.max(totalRequired - passedCount, 0);
+
+      const sectorsMessage = buildSectorsMessage(platform, {
+        sectors,
+        totalRequired,
+        totalCount: sectors.length,
+        passedCount,
+        leftToClose
+      });
+
+      if (waitMsg?.message_id) {
+        if (sectorsMessage.text.length <= 4000) {
+          await editMessage(platform, userId, waitMsg.message_id, sectorsMessage.text, sectorsMessage.options);
+        } else {
+          await editMessage(platform, userId, waitMsg.message_id, sectorsMessage.header, sectorsMessage.options);
+          for (const chunk of splitMessageBody(sectorsMessage.body, 4000)) {
+            await sendMessage(platform, userId, chunk, sectorsMessage.options);
+          }
+        }
+      } else {
+        await sendMessage(platform, userId, sectorsMessage.text, sectorsMessage.options);
+      }
+    } catch (error) {
+      await sendOrUpdateMessage(platform, userId, `❌ Не удалось получить сектора: ${error.message}`, waitMsg?.message_id);
+    }
+    return;
+  }
+
+  if (text === '📊 Статус очереди') {
+    const queueLength = user.answerQueue.length;
+    const status = user.isOnline ? '🟢 Онлайн' : '🔴 Оффлайн';
+    const queueText = queueLength > 0
+      ? 'Очередь:\n' + user.answerQueue.map((item, index) =>
+          `${index + 1}. "${item.answer}" (${new Date(item.timestamp).toLocaleTimeString()})`
+        ).join('\n')
+      : 'Очередь пуста';
+
+    await sendMessage(platform, userId,
+      `Статус: ${status}\n` +
+      `Ответов в очереди: ${queueLength}\n\n` +
+      queueText
+    );
+    return;
+  }
+
+  if (text === '🔗 Сменить игру') {
+    if (!(await checkGameAccess(platform, userId))) {
+      return;
+    }
+
+    user.authCookies = null;
+    await saveUserData();
+    setUserState(platform, userId, STATES.WAITING_FOR_GAME_URL);
+    await sendMessage(platform, userId,
+      'Пришлите новую ссылку на игру:\n\n' +
+      '• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n' +
+      '• https://domain.en.cx/gameengines/encounter/play/XXXXX/'
+    );
+    return;
+  }
+
+  if (text === '👤 Сменить авторизацию') {
+    user.authCookies = null;
+    await saveUserData();
+    setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
+    await sendMessage(platform, userId, 'Введите новый логин:');
+    return;
+  }
+
+  if (!(await checkGameAccess(platform, userId))) {
+    return;
+  }
+
+  const progressMessage = await sendMessage(platform, userId, `⏳ Отправляю ответ "${text}"...`);
+  const progressMessageId = progressMessage?.message_id ?? progressMessage?.conversation_message_id ?? null;
+  const result = await sendAnswerToEncounter(platform, userId, text, progressMessageId);
+
+  if (result && user.answerQueue.length > 0) {
+    setTimeout(() => processAnswerQueue(platform, userId), 1200);
+  }
+}
+
+async function sendLevelTask(platform, userId, user, formatted) {
+  if (!(await checkGameAccess(platform, userId))) {
+    return;
+  }
+
+  const waitText = formatted
+    ? '🔄 Получаю форматированное задание текущего уровня...'
+    : '🔄 Получаю задание текущего уровня...';
+
+  const waitMsg = await sendMessage(platform, userId, waitText);
+
+  try {
+    const api = new EncounterAPI(user.domain);
+
+    if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
+      const auth = await api.authenticate(user.login, user.password);
+      if (!auth.success) {
+        throw new Error(auth.message || 'Не удалось авторизоваться');
+      }
+      user.authCookies = auth.cookies;
+      await saveUserData();
+    }
+
+    let gameState;
+    try {
+      gameState = await api.getGameState(user.gameId, user.authCookies);
+    } catch (error) {
+      const msg = String(error.message || '').toLowerCase();
+      if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
+        const reauth = await api.authenticate(user.login, user.password);
+        if (!reauth.success) {
+          throw new Error(reauth.message || 'Не удалось авторизоваться');
+        }
+        user.authCookies = reauth.cookies;
+        await saveUserData();
+        gameState = await api.getGameState(user.gameId, user.authCookies);
+      } else {
+        throw error;
+      }
+    }
+
+    if (!gameState || !gameState.success) {
+      throw new Error('Не удалось получить состояние игры');
+    }
+
+    let model = gameState.data;
+    if (model.Event !== 0) {
+      if (model.Event === 16) {
+        gameState = await api.getGameState(user.gameId, user.authCookies);
+        if (!gameState.success || gameState.data.Event !== 0) {
+          await sendOrUpdateMessage(platform, userId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg?.message_id);
+          return;
+        }
+        model = gameState.data;
+      } else {
+        await sendOrUpdateMessage(platform, userId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg?.message_id);
+        return;
+      }
+    }
+
+    const level = model.Level;
+    if (!level) {
+      await sendOrUpdateMessage(platform, userId, '⚠️ Активный уровень не найден.', waitMsg?.message_id);
+      return;
+    }
+
+    const taskFragments = collectTaskFragments(level.Tasks, { formatted });
+    const helps = collectHelps(level.Helps, { formatted });
+    const timeoutRemain = formatRemain(level.TimeoutSecondsRemain);
+
+    const taskMessage = buildTaskMessage(platform, {
+      level,
+      taskFragments,
+      helps,
+      timeoutRemain,
+      formatted
+    });
+
+    if (waitMsg?.message_id) {
+      const editOptions = { ...taskMessage.options };
+      if (waitMsg?.conversation_message_id != null) {
+        editOptions.conversationMessageId = waitMsg.conversation_message_id;
+      }
+
+      if (taskMessage.text.length <= 4000) {
+        await editMessage(platform, userId, waitMsg.message_id, taskMessage.text, editOptions);
+      } else {
+        await editMessage(platform, userId, waitMsg.message_id, taskMessage.header, editOptions);
+        for (const chunk of splitMessageBody(taskMessage.body, 4000)) {
+          await sendMessage(platform, userId, chunk, taskMessage.options);
+        }
+      }
+    } else {
+      await sendMessage(platform, userId, taskMessage.text, taskMessage.options);
+    }
+  } catch (error) {
+    const errorPrefix = formatted
+      ? '❌ Не удалось получить форматированное задание'
+      : '❌ Не удалось получить задание';
+    await sendOrUpdateMessage(platform, userId, `${errorPrefix}: ${error.message}`, waitMsg?.message_id);
+  }
+}
 
 // Админ-конфигурация
 let adminConfig = {
@@ -28,9 +810,6 @@ let adminConfig = {
 
 // Кеш whitelist для быстрой проверки
 let whitelistCache = new Set();
-
-// Файл для хранения данных пользователей
-const DATA_FILE = process.env.DATA_FILE || 'user_data.json';
 
 // Файл для хранения настроек админа
 const ADMIN_CONFIG_FILE = 'admin_config.json';
@@ -48,55 +827,6 @@ const STATES = {
 };
 
 // Загрузка данных пользователей при запуске
-async function loadUserData() {
-  try {
-    if (await fs.pathExists(DATA_FILE)) {
-      const data = await fs.readJson(DATA_FILE);
-      const now = Date.now();
-      let migrationCount = 0;
-
-      for (const [userId, userInfo] of Object.entries(data)) {
-        // Миграция: добавляем новые поля если их нет
-        if (!userInfo.telegramUsername) {
-          userInfo.telegramUsername = null;
-          migrationCount++;
-        }
-        if (!userInfo.telegramFirstName) {
-          userInfo.telegramFirstName = null;
-        }
-        if (!userInfo.firstActivity) {
-          userInfo.firstActivity = now;
-          migrationCount++;
-        }
-        if (!userInfo.lastActivity) {
-          userInfo.lastActivity = now;
-          migrationCount++;
-        }
-
-        userData.set(userId, userInfo);
-      }
-
-      console.log(`Данные пользователей загружены (${userData.size} пользователей)`);
-      if (migrationCount > 0) {
-        console.log(`Выполнена миграция данных для ${migrationCount} полей`);
-        await saveUserData(); // Сохраняем мигрированные данные
-      }
-    }
-  } catch (error) {
-    console.error('Ошибка загрузки данных пользователей:', error);
-  }
-}
-
-// Сохранение данных пользователей
-async function saveUserData() {
-  try {
-    const data = Object.fromEntries(userData);
-    await fs.writeJson(DATA_FILE, data, { spaces: 2 });
-  } catch (error) {
-    console.error('Ошибка сохранения данных пользователей:', error);
-  }
-}
-
 // Загрузка админ-конфигурации
 async function loadAdminConfig() {
   try {
@@ -172,19 +902,425 @@ function rebuildWhitelistCache() {
 }
 
 // Создание клавиатуры для главного меню
-function createMainKeyboard() {
-  return {
-    reply_markup: {
-      keyboard: [
-        ['Задание'],
-        ['Сектора'],
-        ['📊 Статус очереди', '🔗 Сменить игру'],
-        ['👤 Сменить авторизацию']
-      ],
-      resize_keyboard: true,
-      one_time_keyboard: false
+const MAIN_MENU_LAYOUT = [
+  ['Задание'],
+  ['Задание (формат)'],
+  ['Сектора'],
+  ['📊 Статус очереди', '🔗 Сменить игру'],
+  ['👤 Сменить авторизацию']
+];
+
+function createMainKeyboard(platform) {
+  if (platform === TELEGRAM_PLATFORM) {
+    return {
+      reply_markup: {
+        keyboard: MAIN_MENU_LAYOUT.map(row => [...row]),
+        resize_keyboard: true,
+        one_time_keyboard: false
+      }
+    };
+  }
+
+  if (platform === VK_PLATFORM) {
+    const buttons = MAIN_MENU_LAYOUT.map(row =>
+      row.map(label => ({
+        action: {
+          type: 'text',
+          label,
+          payload: JSON.stringify({ type: 'main_menu', value: label })
+        },
+        color: 'secondary'
+      }))
+    );
+
+    return {
+      keyboard: {
+        type: 'reply',
+        buttons,
+        oneTime: false
+      }
+    };
+  }
+
+  return {};
+}
+
+function buildSectorsMessage(platform, { sectors, totalRequired, totalCount, passedCount, leftToClose }) {
+  const isTelegram = platform === TELEGRAM_PLATFORM;
+  const options = isTelegram
+    ? { parse_mode: 'HTML', disable_web_page_preview: true }
+    : {};
+
+  if (!Array.isArray(sectors) || sectors.length === 0) {
+    const header = isTelegram ? '<b>🗄 Секторы</b>' : '🗄 Секторы';
+    const text = `${header}\n\nНет данных о секторах.`;
+    return {
+      text,
+      header,
+      body: '',
+      options
+    };
+  }
+
+  const lines = sectors.map(s => {
+    const order = s?.Order ?? '';
+    const nameRaw = s?.Name ?? '';
+    const name = isTelegram ? escapeHtml(nameRaw) : nameRaw;
+    const isAnswered = s?.IsAnswered === true;
+    const answerTextRaw = s?.Answer;
+    const answerText = extractSectorAnswerText(answerTextRaw);
+
+    if (isTelegram) {
+      const safeAnswer = answerText ? `<code>${escapeHtml(answerText)}</code>` : '<code>—</code>';
+      const condition = isAnswered ? `${safeAnswer} ✅` : '<i>...</i>';
+      return `#${order} (${name}) — ${condition}`;
     }
+
+    const safeAnswer = answerText ? `«${answerText}»` : '—';
+    const condition = isAnswered ? `${safeAnswer} ✅` : '…';
+    return `#${order} (${name}) — ${condition}`;
+  });
+
+  const header = isTelegram
+    ? `<b>🗄 Секторы (обязательных ${totalRequired} из ${totalCount})</b>`
+    : `🗄 Секторы (обязательных ${totalRequired} из ${totalCount})`;
+
+  const summary = isTelegram
+    ? `Закрыто — <b>${passedCount}</b>, осталось — <b>${leftToClose}</b>`
+    : `Закрыто — ${passedCount}, осталось — ${leftToClose}`;
+
+  const body = lines.join('\n');
+  const text = `${header}\n\n${summary}\n\n${body}`;
+
+  return {
+    text,
+    header,
+    body,
+    options
   };
+}
+
+function collectTaskFragments(tasks, { formatted = false } = {}) {
+  const fragments = [];
+  const field = formatted ? 'TaskTextFormatted' : 'TaskText';
+
+  const addFragment = (rawValue) => {
+    if (rawValue == null) {
+      return;
+    }
+    const raw = String(rawValue);
+    const presenceCheck = stripHtml(raw).trim();
+    if (presenceCheck.length === 0) {
+      return;
+    }
+    fragments.push(formatted ? raw : raw.trim());
+  };
+
+  if (Array.isArray(tasks)) {
+    for (const task of tasks) {
+      const rawValue = task?.[field] ?? task?.TaskText;
+      addFragment(rawValue);
+    }
+  } else if (tasks && typeof tasks === 'object') {
+    const rawValue = tasks[field] ?? tasks.TaskText;
+    addFragment(rawValue);
+  }
+
+  return fragments;
+}
+
+function collectHelps(helps, { formatted = false } = {}) {
+  const result = [];
+  if (!Array.isArray(helps)) {
+    return result;
+  }
+
+  const field = formatted ? 'HelpTextFormatted' : 'HelpText';
+
+  for (const help of helps) {
+    const rawValue = help?.[field] ?? help?.HelpText ?? '';
+    const raw = String(rawValue);
+    const trimmed = stripHtml(raw).trim();
+    const remainSeconds = help?.RemainSeconds ?? null;
+
+    if (trimmed.length === 0 && (remainSeconds == null || remainSeconds <= 0)) {
+      // Если текста нет и подсказка не ожидается, пропускаем
+      continue;
+    }
+
+    result.push({
+      number: help?.Number ?? '',
+      text: formatted ? raw : raw.trim(),
+      remainSeconds
+    });
+  }
+
+  return result;
+}
+
+function buildTaskMessage(platform, { level, taskFragments, helps, timeoutRemain, formatted = false }) {
+  const isTelegram = platform === TELEGRAM_PLATFORM;
+  const normalizedHelps = Array.isArray(helps) ? helps : [];
+  const options = isTelegram
+    ? { parse_mode: 'HTML', disable_web_page_preview: true }
+    : {};
+
+  const levelNumber = level?.Number ?? '';
+  const levelNameRaw = String(level?.Name || '').trim();
+  const levelName = isTelegram ? escapeHtml(levelNameRaw) : levelNameRaw;
+  const header = isTelegram
+    ? `<b>📜 Задание уровня №${levelNumber}${levelName ? ` — ${levelName}` : ''}</b>`
+    : `📜 Задание уровня №${levelNumber}${levelName ? ` — ${levelName}` : ''}`;
+
+  const timeoutLine = timeoutRemain
+    ? (isTelegram
+      ? `<i>До автоперехода осталось: ${escapeHtml(timeoutRemain)}</i>`
+      : `До автоперехода осталось: ${timeoutRemain}`)
+    : '';
+
+  const renderTaskFragment = (text) => {
+    if (formatted) {
+      if (isTelegram) {
+        return sanitizeHtmlForTelegram(text);
+      }
+      return stripHtml(text);
+    }
+    return isTelegram ? escapeHtml(text) : text;
+  };
+
+  let bodyMain;
+  if (taskFragments.length > 0) {
+    if (!formatted && isTelegram) {
+      bodyMain = taskFragments
+        .map(fragment => `<blockquote>${renderTaskFragment(fragment)}</blockquote>`)
+        .join('\n\n');
+    } else {
+      const rendered = taskFragments.map(fragment => renderTaskFragment(fragment));
+      bodyMain = rendered.join('\n\n');
+    }
+  } else {
+    bodyMain = formatted
+      ? (isTelegram ? '<i>Текст задания недоступен.</i>' : 'Текст задания недоступен.')
+      : (isTelegram ? '<blockquote>Текст задания недоступен.</blockquote>' : 'Текст задания недоступен.');
+  }
+
+  const helpsSections = [];
+  for (const help of normalizedHelps) {
+    const number = help.number;
+    const label = number ? `💡 Подсказка ${number}` : '💡 Подсказка';
+    const remainStr = formatRemain(help.remainSeconds);
+    const helpContent = formatted
+      ? (isTelegram ? sanitizeHtmlForTelegram(help.text) : stripHtml(help.text))
+      : (isTelegram ? escapeHtml(help.text) : help.text);
+
+    if (isTelegram) {
+      if (formatted) {
+        const remainLine = remainStr ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>` : '';
+        helpsSections.push(
+          `<b>${label}</b>\n${helpContent}${remainLine}`
+        );
+      } else {
+        const remainLine = remainStr ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>` : '';
+        helpsSections.push(
+          `<b>${label}</b>\n<blockquote>${helpContent}</blockquote>${remainLine}`
+        );
+      }
+    } else {
+      let section = `${label}\n${helpContent}`;
+      if (remainStr) {
+        section += `\nДо подсказки осталось: ${remainStr}`;
+      }
+      helpsSections.push(section);
+    }
+  }
+
+  const helpsBlock = helpsSections.length > 0
+    ? helpsSections.join('\n\n')
+    : '';
+
+  const sections = [header];
+  if (timeoutLine) {
+    sections.push(timeoutLine);
+  }
+  if (bodyMain) {
+    sections.push(bodyMain);
+  }
+  if (helpsBlock) {
+    sections.push(helpsBlock);
+  }
+
+  const text = sections.join('\n\n');
+  const body = sections.slice(1).join('\n\n');
+
+  return {
+    text,
+    header,
+    body,
+    options
+  };
+}
+
+function splitMessageBody(text, maxLength) {
+  if (!text) {
+    return [];
+  }
+
+  const chunks = [];
+  for (let i = 0; i < text.length; i += maxLength) {
+    chunks.push(text.slice(i, i + maxLength));
+  }
+  return chunks;
+}
+
+function sanitizeHtmlForTelegram(html) {
+  if (!html) {
+    return '';
+  }
+
+  let text = String(html);
+
+  text = text.replace(/\r\n?/g, '\n');
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/p>/gi, '\n\n');
+  text = text.replace(/<p[^>]*>/gi, '');
+  text = text.replace(/<\/?div[^>]*>/gi, '\n');
+  text = text.replace(/<li[^>]*>/gi, '\n• ');
+  text = text.replace(/<\/li>/gi, '');
+  text = text.replace(/<\/?(ul|ol)[^>]*>/gi, '\n');
+  text = text.replace(/<blockquote[^>]*>/gi, '\n');
+  text = text.replace(/<\/blockquote>/gi, '\n');
+  text = text.replace(/<h([1-6])[^>]*>/gi, '\n<b>');
+  text = text.replace(/<\/h[1-6]>/gi, '</b>\n');
+
+  const replacements = [
+    { from: /<strong[^>]*>/gi, to: '<b>' },
+    { from: /<\/strong>/gi, to: '</b>' },
+    { from: /<em[^>]*>/gi, to: '<i>' },
+    { from: /<\/em>/gi, to: '</i>' },
+    { from: /<ins[^>]*>/gi, to: '<u>' },
+    { from: /<\/ins>/gi, to: '</u>' },
+    { from: /<u[^>]*>/gi, to: '<u>' },
+    { from: /<\/u>/gi, to: '</u>' },
+    { from: /<(?:strike|del)[^>]*>/gi, to: '<s>' },
+    { from: /<\/(?:strike|del)>/gi, to: '</s>' },
+    { from: /<span[^>]*>/gi, to: '' },
+    { from: /<\/span>/gi, to: '' },
+    { from: /<font[^>]*>/gi, to: '' },
+    { from: /<\/font>/gi, to: '' },
+    { from: /<pre[^>]*>/gi, to: '\n<pre>' },
+    { from: /<\/pre>/gi, to: '</pre>\n' },
+    { from: /<code[^>]*>/gi, to: '<code>' },
+    { from: /<\/code>/gi, to: '</code>' }
+  ];
+  for (const { from, to } of replacements) {
+    text = text.replace(from, to);
+  }
+
+  text = text.replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>/gi, '<a href="$1">');
+  text = text.replace(/<\/a>/gi, '</a>');
+
+  const allowedTags = new Set(['b', 'i', 'u', 's', 'code', 'pre', 'a']);
+  text = text.replace(/<([^>]+)>/gi, (match, inner) => {
+    const content = inner.trim();
+    if (!content) {
+      return '';
+    }
+
+    const isClosing = content.startsWith('/');
+    let tagBody = isClosing ? content.slice(1).trim() : content;
+    const isSelfClosing = tagBody.endsWith('/');
+    if (isSelfClosing) {
+      tagBody = tagBody.slice(0, -1).trim();
+    }
+    const tagNameMatch = tagBody.match(/^([a-z0-9]+)/i);
+    if (!tagNameMatch) {
+      return '';
+    }
+    const tagName = tagNameMatch[1].toLowerCase();
+
+    if (tagName === 'br') {
+      return '\n';
+    }
+
+    if (!allowedTags.has(tagName)) {
+      return '';
+    }
+
+    if (isClosing) {
+      return `</${tagName}>`;
+    }
+
+    if (tagName === 'a') {
+      const hrefMatch = tagBody.match(/href\s*=\s*['"]([^'"]+)['"]/i);
+      const href = hrefMatch ? hrefMatch[1] : null;
+      if (!href) {
+        return '';
+      }
+      return `<a href="${href}">`;
+    }
+
+    return `<${tagName}>`;
+  });
+
+  text = text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, '\'').replace(/&apos;/gi, '\'')
+    .replace(/&ndash;/gi, '-')
+    .replace(/&mdash;/gi, '-')
+    .replace(/&hellip;/gi, '...')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&');
+
+  text = text.replace(/\t+/g, ' ');
+  text = text.replace(/\n{3,}/g, '\n\n');
+
+  return text.trim();
+}
+
+function stripHtml(input) {
+  if (!input) {
+    return '';
+  }
+
+  let text = String(input);
+
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/p>/gi, '\n\n');
+  text = text.replace(/<p[^>]*>/gi, '');
+  text = text.replace(/<li[^>]*>/gi, '\n• ');
+  text = text.replace(/<\/li>/gi, '');
+  text = text.replace(/<\/?ul[^>]*>/gi, '\n');
+  text = text.replace(/<\/?ol[^>]*>/gi, '\n');
+  text = text.replace(/<\/?blockquote[^>]*>/gi, '\n');
+  text = text.replace(/<\/?strong[^>]*>/gi, '');
+  text = text.replace(/<\/?em[^>]*>/gi, '');
+  text = text.replace(/<\/?span[^>]*>/gi, '');
+  text = text.replace(/<\/?div[^>]*>/gi, '\n');
+  text = text.replace(/<\/?h\d[^>]*>/gi, '\n');
+  text = text.replace(/<\/?table[^>]*>/gi, '\n');
+  text = text.replace(/<\/?tr[^>]*>/gi, '\n');
+  text = text.replace(/<\/?td[^>]*>/gi, '\t');
+  text = text.replace(/<\/?th[^>]*>/gi, '\t');
+  text = text.replace(/<[^>]+>/g, '');
+
+  text = text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, '\'').replace(/&apos;/gi, '\'')
+    .replace(/&ndash;/gi, '-')
+    .replace(/&mdash;/gi, '-')
+    .replace(/&hellip;/gi, '...')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&');
+
+  text = text.replace(/\t+/g, ' ');
+  text = text.replace(/\r/g, '');
+  text = text.replace(/\n{3,}/g, '\n\n');
+
+  return text.trim();
 }
 
 // Удалён форматтер HTML, показ оригинального текста задания TaskText
@@ -250,67 +1386,19 @@ function extractSectorAnswerText(rawAnswer) {
   }
 }
 
-// Получение информации о пользователе
-function getUserInfo(userId) {
-  if (!userData.has(userId)) {
-    const now = Date.now();
-    userData.set(userId, {
-      login: null,
-      password: null,
-      domain: null,
-      gameId: null,
-      authCookies: null,
-      answerQueue: [],
-      isOnline: true,
-      telegramUsername: null,
-      telegramFirstName: null,
-      firstActivity: now,
-      lastActivity: now
-    });
-  }
-  return userData.get(userId);
-}
-
-// Проверка готовности пользователя
-function isUserReady(userId) {
-  const user = getUserInfo(userId);
-  return user.login && user.password && user.domain && user.gameId;
-}
-
-/**
- * Обновление активности пользователя
- * @param {string} userId - Telegram ID пользователя
- * @param {string} username - Telegram username (@username)
- * @param {string} firstName - Telegram имя пользователя
- */
-function updateUserActivity(userId, username, firstName) {
-  const user = getUserInfo(userId);
-  const now = Date.now();
-
-  // Обновляем username и firstName если они есть
-  if (username && user.telegramUsername !== username) {
-    user.telegramUsername = username;
-  }
-  if (firstName && user.telegramFirstName !== firstName) {
-    user.telegramFirstName = firstName;
-  }
-
-  // Обновляем lastActivity
-  user.lastActivity = now;
-}
-
 /**
  * Проверка пользователя в whitelist
- * @param {string} userId - Telegram ID пользователя
+ * @param {string} platform - идентификатор платформы
+ * @param {string} userId - ID пользователя внутри платформы
  * @returns {boolean} - true если пользователь в whitelist или модерация выключена
  */
-function isUserAllowed(userId) {
+function isUserAllowed(platform, userId) {
   // Если модерация выключена - разрешаем всем
   if (!adminConfig.moderationEnabled) {
     return true;
   }
 
-  const user = getUserInfo(userId);
+  const user = getPlatformUser(platform, userId);
 
   // Проверяем только по Encounter login
   if (user.login) {
@@ -324,65 +1412,59 @@ function isUserAllowed(userId) {
 
 /**
  * Проверка доступа к игровым функциям
- * @param {string} userId - Telegram ID пользователя
+ * @param {string} platform - идентификатор платформы
+ * @param {string} userId - ID пользователя
  * @returns {boolean} - true если доступ разрешен
  */
-async function checkGameAccess(userId) {
-  if (isUserAllowed(userId)) {
+async function checkGameAccess(platform, userId) {
+  if (isUserAllowed(platform, userId)) {
     return true;
   }
 
   // Доступ запрещен - отправляем сообщение
-  await bot.sendMessage(userId, '🚫 Доступ к боту не разрешен. Свяжитесь с @seo2z');
+  await sendMessage(platform, userId, '🚫 Доступ к боту не разрешен. Свяжитесь с @seo2z');
   return false;
 }
 
-// Throttling для обновлений Telegram сообщений (защита от rate limiting)
-const telegramUpdateThrottle = new Map(); // userId -> { lastUpdate: timestamp, pendingText: string, timeout: NodeJS.Timeout }
+// Throttling для обновлений сообщений (защита от rate limiting)
+const messageUpdateThrottle = new Map(); // `${platform}_${userId}_${messageId}` -> { lastUpdate, pendingText, pendingOptions, timeout }
 
-// Функция для отправки или обновления сообщения
-async function sendOrUpdateMessage(userId, text, messageId = null) {
+async function sendOrUpdateMessage(platform, userId, text, messageId = null, options = {}) {
   try {
     if (messageId) {
-      // Проверяем throttle: максимум 1 обновление в 2 секунды на сообщение
-      const throttleKey = `${userId}_${messageId}`;
+      const throttleKey = `${platform}_${userId}_${messageId}`;
       const now = Date.now();
-      const throttle = telegramUpdateThrottle.get(throttleKey);
+      const throttle = messageUpdateThrottle.get(throttleKey);
 
       if (throttle) {
         const elapsed = now - throttle.lastUpdate;
 
         if (elapsed < 2000) {
-          // Слишком рано для обновления - откладываем
           console.log(`⏳ Throttle: откладываю обновление сообщения (прошло ${elapsed}ms < 2000ms)`);
 
-          // Отменяем предыдущий отложенный апдейт если есть
           if (throttle.timeout) {
             clearTimeout(throttle.timeout);
           }
 
-          // Сохраняем текст для отложенного обновления
           throttle.pendingText = text;
+          throttle.pendingOptions = options;
 
-          // Планируем обновление через оставшееся время
           const waitTime = 2000 - elapsed;
           throttle.timeout = setTimeout(async () => {
             try {
-              await bot.editMessageText(throttle.pendingText, {
-                chat_id: userId,
-                message_id: messageId
-              });
+              await editPlatformMessage(platform, userId, messageId, throttle.pendingText, throttle.pendingOptions || {});
               throttle.lastUpdate = Date.now();
               throttle.pendingText = null;
+              throttle.pendingOptions = null;
               throttle.timeout = null;
-              console.log(`✅ Отложенное обновление сообщения выполнено`);
+              console.log('✅ Отложенное обновление сообщения выполнено');
             } catch (err) {
               if (err.code === 'ETELEGRAM' && err.response?.body?.description?.includes('message is not modified')) {
-                console.log(`⏭️ Отложенное обновление: сообщение не изменилось`);
+                console.log('⏭️ Отложенное обновление: сообщение не изменилось');
               } else if (err.response?.statusCode === 429) {
-                console.log(`⚠️ Telegram rate limit при отложенном обновлении, пропускаем`);
+                console.log('⚠️ Rate limit при отложенном обновлении, пропускаем');
               } else {
-                console.error(`❌ Ошибка отложенного обновления:`, err.message);
+                console.error('❌ Ошибка отложенного обновления:', err.message);
               }
             }
           }, waitTime);
@@ -391,43 +1473,38 @@ async function sendOrUpdateMessage(userId, text, messageId = null) {
         }
       }
 
-      // Обновляем сообщение
-      await bot.editMessageText(text, {
-        chat_id: userId,
-        message_id: messageId
-      });
+      await editPlatformMessage(platform, userId, messageId, text, options);
 
-      // Обновляем throttle
-      telegramUpdateThrottle.set(throttleKey, {
+      messageUpdateThrottle.set(throttleKey, {
         lastUpdate: Date.now(),
         pendingText: null,
+        pendingOptions: null,
         timeout: null
       });
 
       return messageId;
-    } else {
-      // Отправляем новое сообщение
-      const sentMessage = await bot.sendMessage(userId, text);
-      return sentMessage.message_id;
-    }
-  } catch (error) {
-    // Игнорируем ошибки "message is not modified" - это нормально
-    if (error.code === 'ETELEGRAM' && error.response?.body?.description?.includes('message is not modified')) {
-      console.log(`⏭️ Сообщение не изменилось, пропускаем обновление`);
-      return messageId; // Возвращаем тот же messageId
     }
 
-    // Игнорируем Telegram rate limit (429) - уже обработано throttle
-    if (error.response?.statusCode === 429) {
-      console.log(`⚠️ Telegram rate limit (429), пропускаем обновление сообщения`);
+    return await sendPlatformMessage(platform, userId, text, options);
+  } catch (error) {
+    if (error.code === 'ETELEGRAM' && error.response?.body?.description?.includes('message is not modified')) {
+      console.log('⏭️ Сообщение не изменилось, пропускаем обновление');
       return messageId;
     }
 
-    // Для других 400 ошибок отправляем новое сообщение
+    if (error.response?.statusCode === 429) {
+      console.log('⚠️ Rate limit (429), пропускаем обновление сообщения');
+      return messageId;
+    }
+
+    if (messageId && /не поддерживает editMessage/i.test(error.message || '')) {
+      console.log(`[${platform}] Транспорт не поддерживает обновление сообщений, отправляю новое`);
+      return await sendPlatformMessage(platform, userId, text, options);
+    }
+
     if (messageId && error.response?.status === 400) {
-      console.log(`📤 Отправляем новое сообщение вместо обновления`);
-      const sentMessage = await bot.sendMessage(userId, text);
-      return sentMessage.message_id;
+      console.log('📤 Отправляем новое сообщение вместо обновления');
+      return await sendPlatformMessage(platform, userId, text, options);
     }
 
     throw error;
@@ -435,328 +1512,6 @@ async function sendOrUpdateMessage(userId, text, messageId = null) {
 }
 
 // Отправка ответа в игру Encounter
-async function sendAnswerToEncounter(userId, answer, progressMessageId = null, retryCount = 0) {
-  const user = getUserInfo(userId);
-  const MAX_RETRIES = 2; // Максимум 2 повторные попытки (всего 3 попытки)
-
-  try {
-    const response = await sendToEncounterAPI(user, answer);
-    
-    if (response.success) {
-      // Показываем детальный результат согласно документации
-      let message = `📤 Ответ "${answer}" отправлен на уровень №${response.levelNumber}\n${response.message}`;
-      
-      // Дополнительная информация об уровне (если есть)
-      if (response.level && response.level.Name) {
-        message += `\n📝 Уровень: ${response.level.Name}`;
-        if (response.level.PassedSectorsCount !== undefined && response.level.RequiredSectorsCount !== undefined) {
-          message += `\n📊 Сектора: ${response.level.PassedSectorsCount}/${response.level.RequiredSectorsCount}`;
-        }
-      }
-      
-      // Обновляем сообщение или отправляем новое
-      await sendOrUpdateMessage(userId, message, progressMessageId);
-      return response;
-    } else {
-      throw new Error(response.error || 'Ошибка отправки ответа');
-    }
-  } catch (error) {
-    console.error('Ошибка отправки ответа:', error);
-    
-    // Проверяем типы ошибок для решения о добавлении в очередь
-    const networkErrors = ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'network', 'timeout'];
-    const isNetworkError = networkErrors.some(errType => 
-      error.code === errType || error.message.toLowerCase().includes(errType.toLowerCase())
-    );
-    
-    const authErrors = ['Требуется повторная авторизация', 'сессия истекла'];
-    const isAuthError = authErrors.some(errType =>
-      error.message.toLowerCase().includes(errType.toLowerCase())
-    );
-
-    // Критические ошибки - IP блокировка (не retry!)
-    const criticalErrors = ['IP заблокирован', 'слишком много запросов'];
-    const isCriticalError = criticalErrors.some(errType =>
-      error.message.toLowerCase().includes(errType.toLowerCase())
-    );
-
-    if (isCriticalError) {
-      console.error(`🚫 Критическая ошибка блокировки: ${error.message}`);
-      await sendOrUpdateMessage(userId, `🚫 ${error.message}\n\nБот временно заблокирован. Повторите попытку через 5-10 минут.`, progressMessageId);
-      return null;
-    }
-
-    if (isNetworkError) {
-      user.answerQueue.push({
-        answer: answer,
-        timestamp: Date.now()
-      });
-      user.isOnline = false;
-      await saveUserData();
-
-      bot.sendMessage(userId, `🔄 Нет соединения. Ответ "${answer}" добавлен в очередь.`);
-      return null;
-    } else if (isAuthError) {
-      // Проверяем не превысили ли лимит retry
-      if (retryCount >= MAX_RETRIES) {
-        console.error(`❌ Достигнут максимум попыток (${MAX_RETRIES}) для ответа "${answer}"`);
-        await sendOrUpdateMessage(userId, `❌ Не удалось отправить ответ "${answer}" после ${MAX_RETRIES + 1} попыток. Попробуйте позже.`, progressMessageId);
-        return null;
-      }
-
-      console.log(`🔒 Переавторизация для ответа "${answer}" (попытка ${retryCount + 1}/${MAX_RETRIES + 1})`);
-
-      // Обновляем сообщение о переавторизации если есть прогресс-сообщение
-      if (progressMessageId) {
-        await sendOrUpdateMessage(userId, `🔒 Переавторизация для "${answer}" (попытка ${retryCount + 1})...`, progressMessageId);
-      }
-
-      try {
-        // Сбрасываем куки и повторяем
-        user.authCookies = null;
-        await saveUserData();
-
-        // Exponential backoff: 1s, 2s, 4s
-        const backoffDelay = Math.pow(2, retryCount) * 1000;
-        console.log(`⏱️ Exponential backoff: ждём ${backoffDelay}ms перед попыткой ${retryCount + 2}`);
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
-
-        console.log(`🔄 Повторная попытка ${retryCount + 2} отправки "${answer}" после переавторизации`);
-
-        // Обновляем статус повторной попытки
-        if (progressMessageId) {
-          await sendOrUpdateMessage(userId, `🔄 Повторяю отправку "${answer}" (попытка ${retryCount + 2})...`, progressMessageId);
-        }
-
-        // Рекурсивный вызов с увеличенным счётчиком retry
-        return await sendAnswerToEncounter(userId, answer, progressMessageId, retryCount + 1);
-      } catch (retryError) {
-        console.error('Ошибка повторной попытки:', retryError);
-
-        // Проверяем не является ли ошибка снова ошибкой "message is not modified"
-        const isMessageNotModifiedError = retryError.code === 'ETELEGRAM' &&
-          retryError.response?.body?.description?.includes('message is not modified');
-
-        if (!isMessageNotModifiedError) {
-          await sendOrUpdateMessage(userId, `❌ Не удалось переавторизоваться: ${retryError.message}`, progressMessageId);
-        }
-        return null;
-      }
-    } else {
-      await sendOrUpdateMessage(userId, `❌ Ошибка: ${error.message}`, progressMessageId);
-      return null;
-    }
-  }
-}
-
-// Отправка ответов из очереди
-async function processAnswerQueue(userId) {
-  const user = getUserInfo(userId);
-  
-  if (user.answerQueue.length === 0) {
-    return;
-  }
-  
-  const totalAnswers = user.answerQueue.length;
-  let processed = 0;
-  let successful = 0;
-  let skipped = 0;
-  
-  // Отправляем начальное сообщение
-  const queueMessage = await bot.sendMessage(userId, `🔄 Подготовка к обработке очереди из ${totalAnswers} ответов...`);
-  
-  // Задержка перед началом обработки для стабилизации соединения
-  console.log('⏱️ Задержка 3 секунды перед началом обработки очереди...');
-  await new Promise(resolve => setTimeout(resolve, 3000));
-  
-  // Обновляем сообщение
-  await sendOrUpdateMessage(userId, `🔄 Обрабатываю очередь из ${totalAnswers} ответов...`, queueMessage.message_id);
-  
-  for (let i = 0; i < user.answerQueue.length; i++) {
-    const queueItem = user.answerQueue[i];
-    processed++;
-    
-    // Обновляем прогресс
-    await sendOrUpdateMessage(userId, 
-      `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n⏳ Отправляю "${queueItem.answer}"...`, 
-      queueMessage.message_id
-    );
-    
-    try {
-      const response = await sendToEncounterAPI(user, queueItem.answer);
-      
-      if (response.success) {
-        successful++;
-        user.answerQueue.splice(i, 1);
-        i--; // Корректируем индекс после удаления
-        
-        // Показываем успешную отправку кратко
-        await sendOrUpdateMessage(userId, 
-          `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n✅ Ответ отправлен`, 
-          queueMessage.message_id
-        );
-      } else {
-        throw new Error('Ошибка отправки');
-      }
-    } catch (error) {
-      console.error('Ошибка обработки очереди:', error);
-      
-      // Проверяем тип ошибки
-      const ignorableErrors = [
-        'Event не определен',
-        'Неизвестная ошибка игры',
-        'Уровень изменился',
-        'некорректные данные'
-      ];
-      
-      const authErrors = [
-        'Требуется повторная авторизация',
-        'сессия истекла'
-      ];
-      
-      const isIgnorableError = ignorableErrors.some(errType => 
-        error.message.toLowerCase().includes(errType.toLowerCase())
-      );
-      
-      const isAuthError = authErrors.some(errType => 
-        error.message.toLowerCase().includes(errType.toLowerCase())
-      );
-      
-      if (isIgnorableError) {
-        console.log(`⚠️ Пропускаем ответ "${queueItem.answer}" из-за устаревших данных`);
-        skipped++;
-        
-        // Кратко обновляем статус
-        await sendOrUpdateMessage(userId, 
-          `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n⚠️ Пропущен устаревший ответ`, 
-          queueMessage.message_id
-        );
-        
-        // Удаляем проблемный ответ и продолжаем
-        user.answerQueue.splice(i, 1);
-        i--; // Корректируем индекс после удаления
-        
-      } else if (isAuthError) {
-        console.log(`🔒 Проблема авторизации в очереди: ${error.message}`);
-        
-        // Показываем переавторизацию с конкретным ответом
-        await sendOrUpdateMessage(userId, 
-          `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n🔒 Переавторизация для "${queueItem.answer}"...`, 
-          queueMessage.message_id
-        );
-        
-        try {
-          // Сбрасываем куки и повторяем
-          user.authCookies = null;
-          await saveUserData();
-          
-          // Задержка перед повторной попыткой
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          // Показываем повторную попытку
-          await sendOrUpdateMessage(userId, 
-            `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n🔄 Повторяю "${queueItem.answer}"...`, 
-            queueMessage.message_id
-          );
-          
-          // Возвращаемся к тому же ответу (не удаляем из очереди)
-          i--; // Возвращаемся к тому же элементу
-          processed--; // Корректируем счетчик
-          
-          console.log(`🔄 Повторяем отправку ответа "${queueItem.answer}" после переавторизации`);
-        } catch (authError) {
-          console.error('Ошибка переавторизации в очереди:', authError);
-          
-          // Проверяем не является ли ошибка "message is not modified"
-          const isMessageNotModifiedError = authError.code === 'ETELEGRAM' && 
-            authError.response?.body?.description?.includes('message is not modified');
-          
-          if (!isMessageNotModifiedError) {
-            console.log(`⚠️ Пропускаем ответ "${queueItem.answer}" из-за ошибки переавторизации`);
-          }
-          
-          skipped++;
-          user.answerQueue.splice(i, 1);
-          i--; // Корректируем индекс после удаления
-        }
-        
-      } else {
-        // Серьезная ошибка - останавливаем обработку
-        await sendOrUpdateMessage(userId, 
-          `❌ Ошибка обработки очереди: ${error.message}\n📊 Обработано: ${successful}/${totalAnswers}`, 
-          queueMessage.message_id
-        );
-        break;
-      }
-    }
-    
-    // Универсальная задержка между ответами (независимо от результата)
-    if (i < user.answerQueue.length - 1 || processed < totalAnswers) {
-      console.log(`⏱️ Задержка 1.2 секунды перед следующим ответом...`);
-      await new Promise(resolve => setTimeout(resolve, 1200));
-    }
-  }
-  
-  if (user.answerQueue.length === 0) {
-    user.isOnline = true;
-    
-    // Финальное сообщение с итогами
-    let finalMessage = `✅ Обработка очереди завершена!\n📊 Результат: ${successful} отправлено`;
-    if (skipped > 0) {
-      finalMessage += `, ${skipped} пропущено`;
-    }
-    finalMessage += ` из ${totalAnswers}`;
-    
-    await sendOrUpdateMessage(userId, finalMessage, queueMessage.message_id);
-  }
-  
-  await saveUserData();
-}
-
-// Функция для отправки запроса к API Encounter
-async function sendToEncounterAPI(user, answer) {
-  try {
-    const api = new EncounterAPI(user.domain);
-
-    // Авторизуемся ТОЛЬКО если нет cookies или они пустые
-    if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
-      console.log(`🔐 Нет cookies, выполняем авторизацию для ${user.login}...`);
-      console.log(`🎮 Данные игры: домен=${user.domain}, ID=${user.gameId}`);
-
-      const authResult = await api.authenticate(user.login, user.password);
-      if (authResult.success) {
-        user.authCookies = authResult.cookies;
-        await saveUserData();
-        console.log(`✅ Авторизация успешна для ${user.login}`);
-      } else {
-        throw new Error(`Ошибка авторизации: ${authResult.message}`);
-      }
-    } else {
-      console.log(`🔑 Используем сохраненные cookies для ${user.login}`);
-    }
-
-    // Отправляем ответ с автоматической реаутентификацией (передаем login/password)
-    const result = await api.sendAnswer(user.gameId, answer, user.authCookies, user.login, user.password);
-
-    // Если были обновлены cookies (автореаутентификация сработала) - сохраняем новые
-    if (result.newCookies) {
-      console.log(`🔄 Cookies обновлены после автоматической реаутентификации`);
-      user.authCookies = result.newCookies;
-      await saveUserData();
-    }
-
-    if (result.success) {
-      console.log(`✅ Ответ "${answer}" отправлен в игру ${user.gameId}. ${result.message}`);
-      return result;
-    } else {
-      throw new Error('Не удалось отправить ответ');
-    }
-  } catch (error) {
-    console.error('Ошибка API Encounter:', error.message);
-    throw error;
-  }
-}
-
 // Функция для парсинга ссылки на игру
 function parseGameUrl(url) {
   try {
@@ -832,7 +1587,7 @@ async function showUsersList(chatId, messageId, page = 0) {
       inline_keyboard: [[{ text: '◀️ Назад', callback_data: 'admin_back' }]]
     };
 
-    await bot.editMessageText(message, {
+    await editTelegramMessage(message, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'HTML',
@@ -843,13 +1598,18 @@ async function showUsersList(chatId, messageId, page = 0) {
 
   let message = `👥 <b>Пользователи</b> (страница ${page + 1}/${totalPages})\n\n`;
 
-  for (const [userId, user] of pageUsers) {
+  for (const [storageKey, user] of pageUsers) {
+    const [keyPlatform, ...restKey] = storageKey.split('::');
+    const platform = user.platform || keyPlatform || TELEGRAM_PLATFORM;
+    const plainUserId = user.userId || (restKey.length > 0 ? restKey.join('::') : storageKey);
     const username = user.telegramUsername ? `@${user.telegramUsername}` : user.telegramFirstName || 'Без имени';
     const login = user.login || '—';
     const firstActivity = user.firstActivity ? new Date(user.firstActivity).toLocaleDateString('ru-RU') : '—';
     const lastActivity = user.lastActivity ? new Date(user.lastActivity).toLocaleString('ru-RU') : '—';
 
     message += `<b>${username}</b>\n`;
+    message += `ID: <code>${plainUserId}</code>\n`;
+    message += `Платформа: ${platform}\n`;
     message += `Логин EN: <code>${login}</code>\n`;
     message += `Первый вход: ${firstActivity}\n`;
     message += `Последний: ${lastActivity}\n\n`;
@@ -872,7 +1632,7 @@ async function showUsersList(chatId, messageId, page = 0) {
 
   keyboard.inline_keyboard.push([{ text: '🏠 Главное меню', callback_data: 'admin_back' }]);
 
-  await bot.editMessageText(message, {
+  await editTelegramMessage(message, {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'HTML',
@@ -898,7 +1658,7 @@ async function showModerationMenu(chatId, messageId) {
     ]
   };
 
-  await bot.editMessageText(message, {
+  await editTelegramMessage(message, {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'HTML',
@@ -967,7 +1727,7 @@ async function showWhitelistMenu(chatId, messageId, page = 0) {
   keyboard.inline_keyboard.push(navButtons);
   keyboard.inline_keyboard.push([{ text: '◀️ Назад', callback_data: 'admin_back' }]);
 
-  await bot.editMessageText(message, {
+  await editTelegramMessage(message, {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'HTML',
@@ -987,7 +1747,7 @@ async function handleWhitelistAdd(chatId, messageId) {
     inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'admin_whitelist_0' }]]
   };
 
-  await bot.editMessageText(message, {
+  await editTelegramMessage(message, {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'HTML',
@@ -995,145 +1755,11 @@ async function handleWhitelistAdd(chatId, messageId) {
   });
 
   // Устанавливаем состояние ожидания ввода
-  userStates.set(chatId, 'WAITING_FOR_WHITELIST_ENTRY');
+  setUserState(TELEGRAM_PLATFORM, String(chatId), 'WAITING_FOR_WHITELIST_ENTRY');
 }
 
 /**
  * Обработка удаления из whitelist
- */
-async function handleWhitelistRemove(chatId, messageId, index) {
-  if (!adminConfig.whitelist || index < 0 || index >= adminConfig.whitelist.length) {
-    await bot.answerCallbackQuery(query.id, {
-      text: '❌ Ошибка: запись не найдена',
-      show_alert: true
-    });
-    return;
-  }
-
-  // Удаляем запись
-  adminConfig.whitelist.splice(index, 1);
-  await saveAdminConfig();
-
-  // Обновляем меню
-  await showWhitelistMenu(chatId, messageId, 0);
-}
-
-// Обработчик команды /reset - сброс всех данных пользователя
-bot.onText(/\/reset/, async (msg) => {
-  const chatId = msg.chat.id;
-  
-  // Удаляем данные пользователя
-  userData.delete(chatId);
-  userStates.delete(chatId);
-  await saveUserData();
-  
-  bot.sendMessage(chatId, 
-    `🔄 Данные сброшены!\n\n` +
-    `Все настройки удалены. Используйте /start для повторной настройки.`
-  );
-});
-
-// Обработчик команды /test
-bot.onText(/\/test/, async (msg) => {
-  const chatId = msg.chat.id;
-  const user = getUserInfo(chatId);
-  
-  if (!isUserReady(chatId)) {
-    bot.sendMessage(chatId, '❌ Сначала настройте бота командой /start');
-    return;
-  }
-  
-  bot.sendMessage(chatId, '🔄 Тестирую подключение...');
-  
-  try {
-    const api = new EncounterAPI(user.domain);
-    
-    // Проверка подключения
-    const isConnected = await api.checkConnection();
-    
-    if (isConnected) {
-      // Проверка авторизации (используем сохраненную, если есть)
-      let authResult = { success: false };
-      
-      if (user.authCookies && Object.keys(user.authCookies).length > 0) {
-        console.log('📋 Используем сохраненную авторизацию для /test');
-        authResult = { success: true, cookies: user.authCookies };
-      } else {
-        console.log('🔐 Выполняем новую авторизацию для /test');
-        authResult = await api.authenticate(user.login, user.password);
-        if (authResult.success) {
-          user.authCookies = authResult.cookies;
-          await saveUserData();
-        }
-      }
-      
-      if (authResult.success) {
-        
-        // Получение информации об игре (с автореаутентификацией)
-        const gameInfo = await api.getGameInfo(user.gameId, user.authCookies, user.login, user.password);
-
-        if (gameInfo.success) {
-          const data = gameInfo.data;
-          bot.sendMessage(chatId, 
-            `✅ Тест успешен!\n\n` +
-            `🌐 Подключение: ОК\n` +
-            `🔐 Авторизация: ОК\n` +
-            `🎮 Игра: ${data.name} (№${data.number})\n` +
-            `👤 Игрок: ${data.login}\n` +
-            `👥 Команда: ${data.team || 'Личная игра'}\n` +
-            `📊 Статус: ${data.status === 'active' ? 'Активна' : 'Неактивна'}\n` +
-            (data.level ? 
-              `🏆 Уровень: ${data.level.name} (№${data.level.number})\n` +
-              `📈 Сектора: ${data.level.sectorsPassed}/${data.level.sectorsTotal}\n` : '') +
-            `\nГотов к отправке ответов!`
-          );
-        } else {
-          bot.sendMessage(chatId, 
-            `✅ Подключение и авторизация успешны!\n` +
-            `⚠️ Не удалось получить информацию об игре: ${gameInfo.error}\n\n` +
-            `Попробуйте отправить тестовый ответ.`
-          );
-        }
-      } else {
-        bot.sendMessage(chatId, `⚠️ Подключение есть, но ошибка авторизации: ${authResult.message}`);
-      }
-    } else {
-      bot.sendMessage(chatId, `❌ Не удается подключиться к домену ${user.domain}`);
-    }
-  } catch (error) {
-    bot.sendMessage(chatId, `❌ Ошибка тестирования: ${error.message}`);
-  }
-});
-
-// Обработчик команды /admin
-bot.onText(/\/admin/, async (msg) => {
-  const chatId = msg.chat.id;
-
-  // Проверка root user
-  if (chatId !== ROOT_USER_ID) {
-    bot.sendMessage(chatId, '❌ У вас нет доступа к админ-панели');
-    return;
-  }
-
-  // Отправляем главное меню админа
-  await showAdminMainMenu(chatId);
-});
-
-// Обработчик команды /cancel - отмена текущего действия
-bot.onText(/\/cancel/, async (msg) => {
-  const chatId = msg.chat.id;
-  const currentState = userStates.get(chatId);
-
-  if (currentState) {
-    userStates.delete(chatId);
-    bot.sendMessage(chatId, '❌ Действие отменено');
-  } else {
-    bot.sendMessage(chatId, 'Нет активных действий для отмены');
-  }
-});
-
-/**
- * Показать главное меню админ-панели
  */
 async function showAdminMainMenu(chatId) {
   const usersCount = userData.size;
@@ -1147,568 +1773,266 @@ async function showAdminMainMenu(chatId) {
 
   const keyboard = {
     inline_keyboard: [
-      [
-        { text: '👥 Пользователи', callback_data: 'admin_users_0' }
-      ],
-      [
-        { text: '🔐 Модерация', callback_data: 'admin_moderation' }
-      ],
-      [
-        { text: '📋 Белый список', callback_data: 'admin_whitelist_0' }
-      ]
+      [{ text: '👥 Пользователи', callback_data: 'admin_users_0' }],
+      [{ text: '🔐 Модерация', callback_data: 'admin_moderation' }],
+      [{ text: '📋 Белый список', callback_data: 'admin_whitelist_0' }]
     ]
   };
 
   try {
-    await bot.sendMessage(chatId, message, {
+    await sendMessage(TELEGRAM_PLATFORM, chatId, message, {
       parse_mode: 'HTML',
       reply_markup: keyboard
     });
   } catch (error) {
     console.error('Ошибка отправки админ-меню:', error);
-    bot.sendMessage(chatId, '❌ Ошибка отображения админ-панели');
+    await sendMessage(TELEGRAM_PLATFORM, chatId, '❌ Ошибка отображения админ-панели');
   }
 }
 
-// Обработчик команды /start
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  const user = getUserInfo(chatId);
-  
-  if (isUserReady(chatId)) {
-    userStates.set(chatId, STATES.READY);
-    bot.sendMessage(chatId, 
-      `Добро пожаловать в en_off_bot! 🎮\n\n` +
-      `Вы уже настроили бота:\n` +
-      `👤 Логин: ${user.login}\n` +
-      `🌐 Домен: ${user.domain}\n` +
-      `🎯 ID игры: ${user.gameId}\n\n` +
-      `Теперь вы можете отправлять ответы!`,
-      createMainKeyboard()
-    );
-  } else {
-    userStates.set(chatId, STATES.WAITING_FOR_LOGIN);
-    bot.sendMessage(chatId, 
-      `Добро пожаловать в en_off_bot! 🎮\n\n` +
-      `Этот бот поможет вам отправлять ответы в игру Encounter, ` +
-      `даже если у вас временно нет интернета.\n\n` +
-      `Для начала мне нужно настроить авторизацию.\n` +
-      `Введите ваш логин:`
-    );
-  }
-});
-
-// Обработчик callback_query (нажатия на inline кнопки)
-bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
-  const messageId = query.message.message_id;
-  const data = query.data;
-
-  // Проверка root user для админ-команд
-  if (data.startsWith('admin_') && chatId !== ROOT_USER_ID) {
-    await bot.answerCallbackQuery(query.id, {
-      text: '❌ У вас нет доступа',
-      show_alert: true
-    });
-    return;
-  }
-
-  try {
-    // Обработка админ-команд
-    if (data.startsWith('admin_users_')) {
-      const page = parseInt(data.split('_')[2]) || 0;
-      await showUsersList(chatId, messageId, page);
-      await bot.answerCallbackQuery(query.id);
-    } else if (data === 'admin_moderation') {
-      await showModerationMenu(chatId, messageId);
-      await bot.answerCallbackQuery(query.id);
-    } else if (data.startsWith('admin_whitelist_')) {
-      const page = parseInt(data.split('_')[2]) || 0;
-      userStates.delete(chatId); // Сброс состояния при переходе в whitelist меню
-      await showWhitelistMenu(chatId, messageId, page);
-      await bot.answerCallbackQuery(query.id);
-    } else if (data === 'admin_back') {
-      userStates.delete(chatId); // Сброс состояния при возврате в главное меню
-      await bot.deleteMessage(chatId, messageId);
-      await showAdminMainMenu(chatId);
-      await bot.answerCallbackQuery(query.id);
-    } else if (data === 'moderation_toggle') {
-      // Переключение модерации
-      adminConfig.moderationEnabled = !adminConfig.moderationEnabled;
-      await saveAdminConfig();
-      await showModerationMenu(chatId, messageId);
-      await bot.answerCallbackQuery(query.id, {
-        text: adminConfig.moderationEnabled ? '✅ Модерация включена' : '❌ Модерация выключена'
+async function handleWhitelistRemove(chatId, messageId, index, queryId = null) {
+  if (!adminConfig.whitelist || index < 0 || index >= adminConfig.whitelist.length) {
+    if (queryId) {
+      await answerTelegramCallback(queryId, {
+        text: '❌ Ошибка: запись не найдена',
+        show_alert: true
       });
-    } else if (data === 'whitelist_add') {
-      await handleWhitelistAdd(chatId, messageId);
-      await bot.answerCallbackQuery(query.id);
-    } else if (data.startsWith('whitelist_remove_')) {
-      const index = parseInt(data.split('_')[2]);
-      await handleWhitelistRemove(chatId, messageId, index);
-      await bot.answerCallbackQuery(query.id, { text: '🗑️ Удалено из белого списка' });
-    } else {
-      await bot.answerCallbackQuery(query.id);
     }
-  } catch (error) {
-    console.error('Ошибка обработки callback_query:', error);
-    await bot.answerCallbackQuery(query.id, {
-      text: '❌ Ошибка обработки команды',
-      show_alert: true
-    });
-  }
-});
-
-// Обработчик текстовых сообщений
-bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-  const text = msg.text;
-
-  // Обновляем активность пользователя
-  updateUserActivity(chatId, msg.from.username, msg.from.first_name);
-
-  // Пропускаем команды
-  if (text && text.startsWith('/')) {
     return;
   }
 
-  const user = getUserInfo(chatId);
+  // Удаляем запись
+  adminConfig.whitelist.splice(index, 1);
+  await saveAdminConfig();
 
-  // Определяем текущее состояние
-  let currentState = userStates.get(chatId);
+  // Обновляем меню
+  await showWhitelistMenu(chatId, messageId, 0);
+}
 
-  // Если состояние не установлено, проверяем готовность пользователя
-  if (!currentState) {
-    if (isUserReady(chatId)) {
-      currentState = STATES.READY;
-      userStates.set(chatId, STATES.READY);
-    } else {
-      currentState = STATES.WAITING_FOR_LOGIN;
-    }
-  }
-
-  // Обработка ввода для whitelist (только для админа)
-  if (currentState === 'WAITING_FOR_WHITELIST_ENTRY' && chatId === ROOT_USER_ID) {
-    const login = text.trim();
-
-    if (login.length < 2) {
-      bot.sendMessage(chatId, '❌ Логин должен содержать минимум 2 символа');
-      return;
-    }
-
-    // Проверяем дубликаты
-    const exists = adminConfig.whitelist.some(item => {
-      const itemLogin = item.login || (item.type === 'encounter' ? item.value : null);
-      return itemLogin && itemLogin.toLowerCase() === login.toLowerCase();
-    });
-
-    if (exists) {
-      bot.sendMessage(chatId, '⚠️ Этот логин уже есть в белом списке');
-      userStates.delete(chatId);
-      return;
-    }
-
-    // Добавляем в whitelist
-    adminConfig.whitelist.push({
-      login,
-      addedBy: chatId,
-      addedAt: Date.now()
-    });
-
-    await saveAdminConfig();
-    await bot.sendMessage(chatId, `✅ Добавлено в белый список:\n🎮 <code>${login}</code>`, {
-      parse_mode: 'HTML'
-    });
-
-    userStates.delete(chatId);
+let handlersRegistered = false;
+function registerTelegramHandlers() {
+  if (handlersRegistered) {
     return;
   }
+  if (!bot) {
+    throw new Error('Telegram бот не инициализирован для регистрации обработчиков');
+  }
+  handlersRegistered = true;
 
-  switch (currentState) {
-    case STATES.WAITING_FOR_LOGIN:
-      user.login = text;
-      userStates.set(chatId, STATES.WAITING_FOR_PASSWORD);
-      bot.sendMessage(chatId, `Логин сохранен: ${text}\nТеперь введите пароль:`);
-      break;
-      
-    case STATES.WAITING_FOR_PASSWORD:
-      user.password = text;
-      
-      // Проверяем базовые требования
-      if (!user.login || !user.password || user.login.length < 2 || user.password.length < 2) {
-        userStates.set(chatId, STATES.WAITING_FOR_LOGIN);
-        bot.sendMessage(chatId, `❌ Логин и пароль должны содержать минимум 2 символа.\nВведите логин еще раз:`);
-        break;
-      }
-      
-      // Проверяем правильность логина и пароля (один раз)
-      bot.sendMessage(chatId, `🔄 Проверяю данные авторизации...`);
-      
+  const commandList = ['reset', 'test', 'admin', 'cancel', 'start'];
+
+  commandList.forEach((command) => {
+    const regex = new RegExp(`\\/${command}(?:\\s+(.*))?$`, 'i');
+    bot.onText(regex, async (msg, match) => {
+      const args = match && match[1] ? match[1].trim() : '';
+      const context = createTelegramContext(msg, {
+        commandName: command,
+        args
+      });
+
       try {
-        const authResult = await checkAuthentication(user.login, user.password);
-        
-        if (authResult.success) {
-          // Сохраняем результат авторизации для дальнейшего использования
-          user.authCookies = authResult.cookies;
-          await saveUserData();
-          
-          userStates.set(chatId, STATES.WAITING_FOR_GAME_URL);
-          bot.sendMessage(chatId, `✅ Авторизация успешна!\nТеперь пришлите ссылку на игру Encounter.\n\nПоддерживаемые форматы:\n• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n• https://domain.en.cx/gameengines/encounter/play/XXXXX/`);
-        } else {
-          userStates.set(chatId, STATES.WAITING_FOR_LOGIN);
-          bot.sendMessage(chatId, `❌ ${authResult.message}\nВведите логин еще раз:`);
-        }
+        await handleCommand(context);
       } catch (error) {
-        userStates.set(chatId, STATES.WAITING_FOR_LOGIN);
-        bot.sendMessage(chatId, `❌ Ошибка проверки авторизации: ${error.message}\nВведите логин еще раз:`);
+        console.error(`[telegram] Ошибка обработки команды /${command}:`, error);
       }
-      break;
-      
-    case STATES.WAITING_FOR_GAME_URL:
-      // Проверка доступа к игре
-      if (!(await checkGameAccess(chatId))) {
-        return;
-      }
+    });
+  });
 
-      const gameUrlResult = parseGameUrl(text);
+  bot.on('callback_query', async (query) => {
+    const context = createTelegramCallbackContext(query);
+    try {
+      await handleCallback(context);
+    } catch (error) {
+      console.error('[telegram] Ошибка обработчика callback_query:', error);
+    }
+  });
 
-      if (gameUrlResult.success) {
-        // Если домен изменился, сбрасываем старые cookies авторизации
-        if (user.domain && user.domain !== gameUrlResult.domain) {
-          console.log(`🔄 Домен изменился с ${user.domain} на ${gameUrlResult.domain}, сбрасываем cookies`);
-          user.authCookies = null;
-        }
-        
-        user.domain = gameUrlResult.domain;
-        user.gameId = gameUrlResult.gameId;
-        userStates.set(chatId, STATES.READY);
-        await saveUserData();
-        
-        bot.sendMessage(chatId, 
-          `🎉 Настройка завершена!\n\n` +
-          `👤 Логин: ${user.login}\n` +
-          `🌐 Домен: ${user.domain}\n` +
-          `🎮 ID игры: ${user.gameId}\n` +
-          `🔗 Тип ссылки: ${gameUrlResult.type}\n\n` +
-          `Теперь вы можете отправлять ответы! Просто напишите ответ в чат.`,
-          createMainKeyboard()
-        );
-        
-        // Подключение будет проверено при первой отправке ответа
-      } else {
-        bot.sendMessage(chatId, `❌ ${gameUrlResult.message}\n\nПопробуйте еще раз:`);
-      }
-      break;
-      
-    case STATES.READY:
-      // Обработка кнопок главного меню
-      if (text === 'Задание') {
-        // Проверка доступа к игре
-        if (!(await checkGameAccess(chatId))) {
-          return;
-        }
-
-        // Получаем текст задания текущего уровня
-        const waitMsg = await bot.sendMessage(chatId, '🔄 Получаю задание текущего уровня...');
-        try {
-          const api = new EncounterAPI(user.domain);
-
-          // Обеспечиваем актуальную авторизацию
-          if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
-            const auth = await api.authenticate(user.login, user.password);
-            if (!auth.success) {
-              throw new Error(auth.message || 'Не удалось авторизоваться');
-            }
-            user.authCookies = auth.cookies;
-            await saveUserData();
-          }
-
-          let gameState;
-          try {
-            gameState = await api.getGameState(user.gameId, user.authCookies);
-          } catch (e) {
-            const msg = String(e.message || '').toLowerCase();
-            if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
-              const reauth = await api.authenticate(user.login, user.password);
-              if (!reauth.success) throw new Error(reauth.message || 'Не удалось авторизоваться');
-              user.authCookies = reauth.cookies;
-              await saveUserData();
-              gameState = await api.getGameState(user.gameId, user.authCookies);
-            } else {
-              throw e;
-            }
-          }
-
-          if (!gameState || !gameState.success) {
-            throw new Error('Не удалось получить состояние игры');
-          }
-
-          const model = gameState.data;
-          if (model.Event !== 0) {
-            // Если уровень изменился — попробуем ещё раз получить актуальное состояние
-            if (model.Event === 16) {
-              gameState = await api.getGameState(user.gameId, user.authCookies);
-              if (!gameState.success || gameState.data.Event !== 0) {
-                await sendOrUpdateMessage(chatId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg.message_id);
-                break;
-              }
-            } else {
-              await sendOrUpdateMessage(chatId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg.message_id);
-              break;
-            }
-          }
-
-          const level = model.Level;
-          if (!level) {
-            await sendOrUpdateMessage(chatId, '⚠️ Активный уровень не найден.', waitMsg.message_id);
-            break;
-          }
-
-          const tasks = level.Tasks;
-          let parts = [];
-          if (Array.isArray(tasks)) {
-            parts = tasks
-              .map(t => escapeHtml(String(t?.TaskText || '').trim()))
-              .filter(p => p.length > 0);
-          } else if (tasks && typeof tasks === 'object') {
-            const single = escapeHtml(String(tasks.TaskText || '').trim());
-            if (single.length > 0) parts = [single];
-          }
-
-          const header = `<b>📜 Задание уровня №${level.Number}${level.Name ? ` — ${escapeHtml(level.Name)}` : ''}</b>`;
-          const timeoutRemain = formatRemain(level.TimeoutSecondsRemain);
-          const timeoutLine = timeoutRemain ? `\n<i>До автоперехода осталось: ${timeoutRemain}</i>` : '';
-          // Текст задания как цитата
-          const body = parts.length > 0 
-            ? parts.map(p => `<blockquote>${p}</blockquote>`).join('\n\n') 
-            : '<blockquote>Текст задания недоступен.</blockquote>';
-
-          // Формируем блок подсказок
-          let helpsBlock = '';
-          const helps = Array.isArray(level.Helps) ? level.Helps : [];
-          if (helps.length > 0) {
-            // Функция форматирования секунд в д/ч/м/с без нулевых единиц
-            const formatRemain = (seconds) => {
-              const total = Number(seconds) || 0;
-              if (total <= 0) return '';
-              let s = Math.floor(total);
-              const days = Math.floor(s / 86400); s %= 86400;
-              const hours = Math.floor(s / 3600); s %= 3600;
-              const minutes = Math.floor(s / 60); s %= 60;
-              const parts = [];
-              if (days > 0) parts.push(`${days}д`);
-              if (hours > 0) parts.push(`${hours}ч`);
-              if (minutes > 0) parts.push(`${minutes}м`);
-              if (s > 0) parts.push(`${s}с`);
-              return parts.join(' ');
-            };
-
-            const helpSections = helps.map(h => {
-              const number = h?.Number ?? '';
-              const helpText = escapeHtml(h?.HelpText || '');
-              const remainStr = formatRemain(h?.RemainSeconds);
-              const remainLine = remainStr ? `\n<i>До подсказки осталось: ${remainStr}</i>` : '';
-              return `<b>💡 Подсказка ${number}</b>\n<blockquote>${helpText}</blockquote>${remainLine}`;
-            });
-            helpsBlock = `\n\n${helpSections.join('\n\n')}`;
-          }
-
-          const fullHtml = `${header}${timeoutLine}\n\n${body}${helpsBlock}`;
-
-          // Отправляем с форматированием HTML
-          if (fullHtml.length <= 4000) {
-            await bot.editMessageText(fullHtml, {
-              chat_id: chatId,
-              message_id: waitMsg.message_id,
-              parse_mode: 'HTML',
-              disable_web_page_preview: true
-            });
-          } else {
-            await bot.editMessageText(header, {
-              chat_id: chatId,
-              message_id: waitMsg.message_id,
-              parse_mode: 'HTML',
-              disable_web_page_preview: true
-            });
-            // Отправляем оставшуюся часть кусками
-            const rest = `\n\n${body}${helpsBlock}`;
-            for (let i = 0; i < rest.length; i += 4000) {
-              await bot.sendMessage(chatId, rest.slice(i, i + 4000), { parse_mode: 'HTML', disable_web_page_preview: true });
-            }
-          }
-        } catch (error) {
-          await sendOrUpdateMessage(chatId, `❌ Не удалось получить задание: ${error.message}`, waitMsg.message_id);
-        }
-      } else if (text === 'Сектора') {
-        // Проверка доступа к игре
-        if (!(await checkGameAccess(chatId))) {
-          return;
-        }
-
-        const waitMsg = await bot.sendMessage(chatId, '🔄 Получаю список секторов...');
-        try {
-          const api = new EncounterAPI(user.domain);
-
-          if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
-            const auth = await api.authenticate(user.login, user.password);
-            if (!auth.success) throw new Error(auth.message || 'Не удалось авторизоваться');
-            user.authCookies = auth.cookies;
-            await saveUserData();
-          }
-
-          let gameState;
-          try {
-            gameState = await api.getGameState(user.gameId, user.authCookies);
-          } catch (e) {
-            const msg = String(e.message || '').toLowerCase();
-            if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
-              const reauth = await api.authenticate(user.login, user.password);
-              if (!reauth.success) throw new Error(reauth.message || 'Не удалось авторизоваться');
-              user.authCookies = reauth.cookies;
-              await saveUserData();
-              gameState = await api.getGameState(user.gameId, user.authCookies);
-            } else {
-              throw e;
-            }
-          }
-
-          if (!gameState || !gameState.success) throw new Error('Не удалось получить состояние игры');
-          let model = gameState.data;
-          if (model.Event !== 0) {
-            if (model.Event === 16) {
-              gameState = await api.getGameState(user.gameId, user.authCookies);
-              if (!gameState.success || gameState.data.Event !== 0) {
-                await sendOrUpdateMessage(chatId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg.message_id);
-                return;
-              }
-              model = gameState.data;
-            } else {
-              await sendOrUpdateMessage(chatId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg.message_id);
-              return;
-            }
-          }
-
-          const level = model.Level;
-          if (!level) {
-            await sendOrUpdateMessage(chatId, '⚠️ Активный уровень не найден.', waitMsg.message_id);
-            return;
-          }
-
-          const sectors = Array.isArray(level.Sectors) ? level.Sectors : [];
-          const totalRequired = Number(level.RequiredSectorsCount) || 0;
-          const passedCount = Number(level.PassedSectorsCount) || 0;
-          const leftToClose = Math.max(totalRequired - passedCount, 0);
-          if (sectors.length === 0) {
-            await bot.editMessageText('<b>🗄 Секторы</b>\n\nНет данных о секторах.', {
-              chat_id: chatId,
-              message_id: waitMsg.message_id,
-              parse_mode: 'HTML'
-            });
-            return;
-          }
-
-          const lines = sectors.map(s => {
-            const order = s?.Order ?? '';
-            const name = escapeHtml(s?.Name ?? '');
-            const isAnswered = s?.IsAnswered === true;
-            const answerTextRaw = s?.Answer;
-            const answerText = extractSectorAnswerText(answerTextRaw);
-            const condition = isAnswered
-              ? (answerText ? `<code>${escapeHtml(answerText)}</code> ✅` : `<code>—</code> ✅`)
-              : `<i>...</i>`;
-            return `#${order} (${name}) — ${condition}`;
-          });
-
-          const totalCount = sectors.length;
-          const header = `<b>🗄 Секторы (обязательных ${totalRequired} из ${totalCount})</b>`;
-          const summary = `Закрыто — <b>${passedCount}</b>, осталось — <b>${leftToClose}</b>`;
-          const body = lines.join('\n');
-          const full = `${header}\n\n${summary}\n\n${body}`;
-
-          if (full.length <= 4000) {
-            await bot.editMessageText(full, {
-              chat_id: chatId,
-              message_id: waitMsg.message_id,
-              parse_mode: 'HTML',
-              disable_web_page_preview: true
-            });
-          } else {
-            await bot.editMessageText(header, {
-              chat_id: chatId,
-              message_id: waitMsg.message_id,
-              parse_mode: 'HTML',
-              disable_web_page_preview: true
-            });
-            for (let i = 0; i < body.length; i += 4000) {
-              await bot.sendMessage(chatId, body.slice(i, i + 4000), { parse_mode: 'HTML', disable_web_page_preview: true });
-            }
-          }
-        } catch (error) {
-          await sendOrUpdateMessage(chatId, `❌ Не удалось получить сектора: ${error.message}`, waitMsg.message_id);
-        }
-      } else if (text === '📊 Статус очереди') {
-        const queueLength = user.answerQueue.length;
-        const status = user.isOnline ? '🟢 Онлайн' : '🔴 Оффлайн';
-        bot.sendMessage(chatId, 
-          `Статус: ${status}\n` +
-          `Ответов в очереди: ${queueLength}\n\n` +
-          `${queueLength > 0 ? 'Очередь:\n' + user.answerQueue.map((item, index) => 
-            `${index + 1}. "${item.answer}" (${new Date(item.timestamp).toLocaleTimeString()})`
-          ).join('\n') : 'Очередь пуста'}`
-        );
-      } else if (text === '🔗 Сменить игру') {
-        // Проверка доступа к игре
-        if (!(await checkGameAccess(chatId))) {
-          return;
-        }
-
-        // Сбрасываем cookies при смене игры
-        user.authCookies = null;
-        await saveUserData();
-
-        userStates.set(chatId, STATES.WAITING_FOR_GAME_URL);
-        bot.sendMessage(chatId, 'Пришлите новую ссылку на игру:\n\n• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n• https://domain.en.cx/gameengines/encounter/play/XXXXX/');
-      } else if (text === '👤 Сменить авторизацию') {
-        // Сбрасываем cookies при смене авторизации
-        user.authCookies = null;
-        await saveUserData();
-        
-        userStates.set(chatId, STATES.WAITING_FOR_LOGIN);
-        bot.sendMessage(chatId, 'Введите новый логин:');
-      } else {
-        // Проверка доступа к игре перед отправкой ответа
-        if (!(await checkGameAccess(chatId))) {
-          return;
-        }
-
-        // Это ответ для игры
-        const progressMessage = await bot.sendMessage(chatId, `⏳ Отправляю ответ "${text}"...`);
-        const result = await sendAnswerToEncounter(chatId, text, progressMessage.message_id);
-        
-        if (result && user.answerQueue.length > 0) {
-          // Если есть очередь ответов, обрабатываем её
-          setTimeout(() => processAnswerQueue(chatId), 1200);
-        }
-      }
-      break;
-  }
-});
+  bot.on('message', async (msg) => {
+    const context = createTelegramContext(msg);
+    try {
+      await handleTextMessage(context);
+    } catch (error) {
+      console.error('[telegram] Ошибка обработки сообщения:', error);
+    }
+  });
+}
 
 // Обработка ошибок
-bot.on('error', (error) => {
-  console.error('Ошибка бота:', error);
-});
-
-bot.on('polling_error', (error) => {
-  console.error('Ошибка polling:', error);
-});
-
 // Запуск бота
 async function startBot() {
   await loadUserData();
   await loadAdminConfig();
+  await telegramAdapter.start();
+  bot = telegramAdapter.getBot();
+
+  bot.on('error', (error) => {
+    console.error('Ошибка бота:', error);
+  });
+
+  bot.on('polling_error', (error) => {
+    console.error('Ошибка polling:', error);
+  });
+
+  registerTransport(TELEGRAM_PLATFORM, {
+    sendMessage: (userId, text, options = {}) => bot.sendMessage(userId, text, options),
+    editMessage: (userId, messageId, text, options = {}) => bot.editMessageText(text, {
+      chat_id: userId,
+      message_id: messageId,
+      ...(options || {})
+    }),
+    deleteMessage: (userId, messageId) => bot.deleteMessage(userId, messageId),
+    sendTyping: (userId) => bot.sendChatAction ? bot.sendChatAction(userId, 'typing') : Promise.resolve(),
+    answerCallback: ({ queryId, ...options }) => bot.answerCallbackQuery(queryId, options)
+  });
+
+  ({
+    sendToEncounterAPI,
+    sendAnswerToEncounter,
+    processAnswerQueue
+  } = createAnswerService({
+    EncounterAPI,
+    sendMessage: sendPlatformMessage,
+    sendOrUpdateMessage,
+    saveUserData,
+    getUserInfo,
+    getAnswerQueue,
+    enqueueAnswer
+  }));
+
+  registerTelegramHandlers();
   console.log('🤖 Telegram-бот en_off_bot запущен!');
   console.log('📱 Готов к приему сообщений...');
+
+  if (VK_GROUP_TOKEN && VK_GROUP_ID) {
+    try {
+      vkAdapterInstance = new VkAdapter({
+        token: VK_GROUP_TOKEN,
+        groupId: VK_GROUP_ID
+      });
+
+      await vkAdapterInstance.start();
+
+      const toPeerId = (userId, options = {}) => {
+        if (typeof userId === 'number') {
+          return userId;
+        }
+
+        if (typeof userId === 'string' && userId.trim() !== '') {
+          const parsed = Number(userId);
+          if (!Number.isNaN(parsed) && parsed !== 0) {
+            return parsed;
+          }
+        }
+
+        const fromOptions = options.peerId ?? options.peer_id ?? options.meta?.peerId;
+        if (fromOptions != null) {
+          const parsed = Number(fromOptions);
+          if (!Number.isNaN(parsed) && parsed !== 0) {
+            return parsed;
+          }
+        }
+
+        throw new Error('[vk] Не удалось определить peerId');
+      };
+
+      registerTransport(VK_PLATFORM, {
+        sendMessage: async (userId, text, options = {}) => {
+          const peerId = toPeerId(userId, options);
+          const safeText = text == null ? '' : String(text);
+          const { keyboard, conversationMessageId, messageId, ...meta } = options || {};
+          const response = await vkAdapterInstance.sendMessage(
+            { peerId, conversationMessageId, messageId },
+            {
+              type: OutboundMessageType.TEXT,
+              text: safeText,
+              keyboard,
+              meta
+            }
+          );
+          return {
+            message_id: response.message_id ?? response,
+            peer_id: response.peer_id ?? peerId,
+            conversation_message_id: response.conversation_message_id ?? conversationMessageId ?? null
+          };
+        },
+        editMessage: async (userId, messageId, text, options = {}) => {
+          const peerId = toPeerId(userId, options);
+          const safeText = text == null ? '' : String(text);
+          const { keyboard, conversationMessageId, ...meta } = options || {};
+
+          await vkAdapterInstance.updateMessage(
+            { peerId, messageId, conversationMessageId },
+            {
+              type: OutboundMessageType.EDIT,
+              text: safeText,
+              keyboard,
+              meta
+            }
+          );
+
+          return {
+            message_id: messageId,
+            peer_id: peerId,
+            conversation_message_id: conversationMessageId ?? null
+          };
+        },
+        sendTyping: async (userId, options = {}) => {
+          try {
+            const peerId = toPeerId(userId, options);
+            await vkAdapterInstance.vk.api.messages.sendActivity({
+              peer_id: peerId,
+              type: 'typing'
+            });
+          } catch (_) {
+            // ignore typing capabilities absence
+          }
+        }
+      });
+
+      vkAdapterInstance.onEvent(async (event) => {
+        try {
+          if (event.type === PlatformEventType.COMMAND) {
+            await handleCommand({
+              platform: event.platform,
+              userId: event.userId,
+              text: event.text || '',
+              commandName: event.meta?.commandName || '',
+              args: event.meta?.args || '',
+              meta: event.meta || {},
+              from: event.meta?.from || {
+                id: event.meta?.fromId
+              }
+            });
+          } else if (event.type === PlatformEventType.CALLBACK) {
+            await handleCallback({
+              platform: event.platform,
+              userId: event.userId,
+              payload: event.payload,
+              meta: event.meta || {}
+            });
+          } else {
+            await handleTextMessage({
+              platform: event.platform,
+              userId: event.userId,
+              text: event.text || '',
+              meta: event.meta || {},
+              from: event.meta?.from || {
+                id: event.meta?.fromId
+              }
+            });
+          }
+        } catch (error) {
+          console.error('[vk] Ошибка обработки события:', error);
+        }
+      });
+
+      console.log('🌐 VK-платформа подключена и готова к работе');
+    } catch (error) {
+      console.error('❌ Не удалось запустить VK адаптер:', error);
+    }
+  } else {
+    console.log('ℹ️ VK платформа отключена (нет VK_GROUP_TOKEN или VK_GROUP_ID)');
+  }
 }
 
 startBot();
@@ -1717,11 +2041,21 @@ startBot();
 process.on('SIGINT', async () => {
   console.log('\n🛑 Остановка бота...');
   await saveUserData();
+  await telegramAdapter.stop().catch(() => {});
+  if (vkAdapterInstance) {
+    await vkAdapterInstance.stop().catch(() => {});
+  }
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   console.log('\n🛑 Остановка бота...');
   await saveUserData();
+  await telegramAdapter.stop().catch(() => {});
+  if (vkAdapterInstance) {
+    await vkAdapterInstance.stop().catch(() => {});
+  }
   process.exit(0);
 });
+
+
