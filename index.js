@@ -13,6 +13,7 @@ const {
 } = require('./src/core/user-store');
 const EncounterAPI = require('./encounter-api');
 const { createAnswerService } = require('./src/core/answer-service');
+const { ensureAuthenticated, createAuthCallback } = require('./src/core/auth-manager');
 const {
   registerTransport,
   sendMessage: sendPlatformMessage,
@@ -53,6 +54,10 @@ const TELEGRAM_PLATFORM = telegramAdapter.name;
 const VK_GROUP_TOKEN = process.env.VK_GROUP_TOKEN || '';
 const VK_GROUP_ID = process.env.VK_GROUP_ID ? Number(process.env.VK_GROUP_ID) : null;
 const VK_PLATFORM = 'vk';
+
+const BURST_WINDOW = 10000; // 10 секунд
+const BURST_THRESHOLD = 3; // минимальное количество сообщений для пачки
+const MESSAGE_INTERVAL_MAX = 2500; // максимальный интервал между сообщениями в пачке
 
 const userStates = new Map();
 
@@ -162,7 +167,9 @@ async function handleTestCommand(context) {
   await sendMessage(platform, userId, '🔄 Тестирую подключение...');
 
   try {
-    const api = new EncounterAPI(user.domain);
+    // Используем централизованную авторизацию с мьютексом
+    const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
+    const api = new EncounterAPI(user.domain, authCallback);
     const isConnected = await api.checkConnection();
 
     if (!isConnected) {
@@ -237,6 +244,56 @@ async function handleAdminCommand(context) {
   await showAdminMainMenu(userId);
 }
 
+async function handleListCommand(context) {
+  const { platform, userId } = context;
+  const user = getPlatformUser(platform, userId);
+
+  if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
+    await sendMessage(platform, userId, '📋 Буфер пуст\n\nНет накопленных кодов.');
+    return;
+  }
+
+  const totalCodes = user.accumulatedAnswers.length;
+  const startLevel = user.accumulationStartLevel;
+
+  const allCodes = user.accumulatedAnswers
+    .map((item, index) => `${index + 1}. "${item.answer}" (уровень ${item.levelNumber || '?'})`)
+    .join('\n');
+
+  await sendMessage(platform, userId,
+    `📋 Список накопленных кодов (${totalCodes}):\n\n` +
+    `${allCodes}\n\n` +
+    `Уровень на момент накопления: ${startLevel?.levelNumber || '?'}`
+  );
+}
+
+async function handleClearCommand(context) {
+  const { platform, userId } = context;
+  const user = getPlatformUser(platform, userId);
+
+  if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
+    await sendMessage(platform, userId, '🧹 Буфер уже пуст\n\nНет накопленных кодов.');
+    return;
+  }
+
+  const count = user.accumulatedAnswers.length;
+
+  // Очищаем буфер
+  user.accumulatedAnswers = [];
+  user.isAccumulatingAnswers = false;
+  user.accumulationStartLevel = null;
+  if (user.accumulationTimer) {
+    clearTimeout(user.accumulationTimer);
+    user.accumulationTimer = null;
+  }
+  await saveUserData();
+
+  await sendMessage(platform, userId,
+    `🧹 Буфер очищен\n\n` +
+    `Удалено ${count} ${count === 1 ? 'код' : count < 5 ? 'кода' : 'кодов'}.`
+  );
+}
+
 async function handleCancelCommand(context) {
   const { platform, userId } = context;
   const currentState = getUserState(platform, userId);
@@ -249,9 +306,53 @@ async function handleCancelCommand(context) {
   }
 }
 
+function resetUserRuntimeState(user) {
+  if (!user) {
+    return;
+  }
+
+  if (Array.isArray(user.answerQueue)) {
+    user.answerQueue.length = 0;
+  } else {
+    user.answerQueue = [];
+  }
+
+  user.pendingQueueDecision = null;
+  user.pendingAnswerDecision = null;
+  user.isProcessingQueue = false;
+
+  if (Array.isArray(user.accumulatedAnswers)) {
+    user.accumulatedAnswers.length = 0;
+  } else {
+    user.accumulatedAnswers = [];
+  }
+
+  user.isAccumulatingAnswers = false;
+  user.accumulationStartLevel = null;
+  if (user.accumulationTimer) {
+    clearTimeout(user.accumulationTimer);
+    user.accumulationTimer = null;
+  }
+
+  clearBurstTimer(user);
+  if (Array.isArray(user.pendingBurstAnswers)) {
+    user.pendingBurstAnswers.length = 0;
+  } else {
+    user.pendingBurstAnswers = [];
+  }
+  user._burstProcessing = false;
+  user._burstProcessingRequested = false;
+
+  user.recentMessageTimestamps = [];
+  user.isOnline = true;
+}
+
 async function handleStartCommand(context) {
   const { platform, userId } = context;
   const user = getPlatformUser(platform, userId);
+
+  resetUserRuntimeState(user);
+  await saveUserData();
 
   if (isPlatformUserReady(platform, userId)) {
     setUserState(platform, userId, STATES.READY);
@@ -288,6 +389,12 @@ async function handleCommand(context) {
     case 'admin':
       await handleAdminCommand(context);
       break;
+    case 'list':
+      await handleListCommand(context);
+      break;
+    case 'clear':
+      await handleClearCommand(context);
+      break;
     case 'cancel':
       await handleCancelCommand(context);
       break;
@@ -302,25 +409,419 @@ async function handleCommand(context) {
 async function handleCallback(context) {
   const { platform, userId, payload = '', meta = {} } = context;
 
-  if (platform !== TELEGRAM_PLATFORM) {
+  const chatId = meta.chatId ?? userId;
+  const messageId = meta.messageId;
+  // Для Telegram используем queryId, для VK - eventId
+  const queryId = meta.queryId || meta.eventId;
+
+  // Helper для answerCallback (работает для Telegram и VK)
+  const answerCb = async (options = {}) => {
+    if (!queryId) return;
+    await answerCallback(platform, {
+      queryId,
+      eventId: meta.eventId,
+      peerId: meta.peerId || chatId,
+      userId,
+      ...options
+    });
+  };
+
+  // Универсальная обработка payload для Telegram (строка) и VK (объект)
+  let data = '';
+  if (typeof payload === 'string') {
+    data = payload;
+  } else if (payload && typeof payload === 'object' && payload.action) {
+    data = payload.action;
+  }
+
+  if (!data) {
+    await answerCb();
     return;
   }
 
-  const chatId = meta.chatId ?? userId;
-  const messageId = meta.messageId;
-  const queryId = meta.queryId;
-  const data = typeof payload === 'string' ? payload : '';
+  // Обработка кнопок выбора очереди (доступно для всех платформ)
+  if (data === 'queue_send' || data === 'queue_clear') {
+    try {
+      const user = getPlatformUser(platform, userId);
+      const queue = getAnswerQueue(platform, userId);
 
-  if (!data) {
-    if (queryId) {
-      await answerCallback(platform, { queryId });
+      if (!user.pendingQueueDecision) {
+        if (queryId) {
+          await answerCb({
+            queryId,
+            text: '⚠️ Нет активного выбора',
+            show_alert: true
+          });
+        }
+        return;
+      }
+
+      const decision = user.pendingQueueDecision;
+
+      if (data === 'queue_send') {
+        // Отправить очередь в новый уровень
+        console.log(`✅ Пользователь выбрал: отправить ${queue.length} ответов в новый уровень`);
+
+        user.pendingQueueDecision = null;
+        await saveUserData();
+
+        if (queryId) {
+          await answerCb({
+            queryId,
+            text: `Отправка ${queue.length} ${queue.length === 1 ? 'ответа' : 'ответов'} в уровень ${decision.newLevelNumber}...`
+          });
+        }
+
+        await sendMessage(platform, userId, `Обработка очереди из ${queue.length} ${queue.length === 1 ? 'ответа' : 'ответов'}...`);
+
+        // Запускаем обработку очереди
+        await processAnswerQueue(platform, userId);
+      } else if (data === 'queue_clear') {
+        // Очистить очередь
+        const clearedAnswers = queue.slice(0, 5).map(item => `"${item.answer}"`).join(', ');
+        const moreAnswers = queue.length > 5 ? ` и ещё ${queue.length - 5}` : '';
+
+        console.log(`🗑️ Пользователь выбрал: очистить ${queue.length} ответов`);
+
+        queue.length = 0;
+        user.pendingQueueDecision = null;
+        await saveUserData();
+
+        if (queryId) {
+          await answerCb({
+            queryId,
+            text: '🗑️ Очередь очищена'
+          });
+        }
+
+        await sendMessage(platform, userId,
+          `🗑️ Очередь очищена (уровень ${decision.oldLevelNumber} → ${decision.newLevelNumber})\n\n` +
+          `Пропущено ${decision.queueSize} ${decision.queueSize === 1 ? 'ответ' : decision.queueSize < 5 ? 'ответа' : 'ответов'}: ${clearedAnswers}${moreAnswers}`
+        );
+      }
+
+      return;
+    } catch (error) {
+      console.error('Ошибка обработки выбора очереди:', error);
+      if (queryId) {
+        await answerCb({
+          queryId,
+          text: '❌ Ошибка обработки',
+          show_alert: true
+        });
+      }
+      return;
     }
+  }
+
+  // Обработка кнопок выбора для одиночного ответа (доступно для всех платформ)
+  if (data === 'answer_send' || data === 'answer_cancel') {
+    try {
+      const user = getPlatformUser(platform, userId);
+
+      if (!user.pendingAnswerDecision) {
+        if (queryId) {
+          await answerCb({
+            queryId,
+            text: '⚠️ Нет активного выбора',
+            show_alert: true
+          });
+        }
+        return;
+      }
+
+      const decision = user.pendingAnswerDecision;
+
+      if (data === 'answer_send') {
+        // Отправить ответ в новый уровень
+        console.log(`Пользователь выбрал: отправить "${decision.answer}" в уровень ${decision.newLevel}`);
+
+        user.pendingAnswerDecision = null;
+        await saveUserData();
+
+        if (queryId) {
+          await answerCb({
+            queryId,
+            text: `Отправка ответа в уровень ${decision.newLevel}...`
+          });
+        }
+
+        // Отправляем ответ напрямую через API с централизованной авторизацией
+        const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
+        const api = new EncounterAPI(user.domain, authCallback);
+
+        try {
+          const result = await api.sendAnswer(user.gameId, decision.answer, user.authCookies, user.login, user.password);
+
+          if (result.success) {
+            let levelInfo = null;
+            if (result.level && result.level.LevelId) {
+              levelInfo = result.level;
+            } else if (result.data?.Level && result.data.Level.LevelId) {
+              levelInfo = result.data.Level;
+            }
+
+            if (!levelInfo) {
+              try {
+                const state = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
+                if (state.success && state.data?.Level && state.data.Level.LevelId) {
+                  levelInfo = state.data.Level;
+                }
+              } catch (stateError) {
+                console.error('⚠️ Не удалось обновить lastKnownLevel после подтверждения:', stateError.message);
+              }
+            }
+
+            if (levelInfo && levelInfo.LevelId) {
+              user.lastKnownLevel = {
+                levelId: levelInfo.LevelId,
+                levelNumber: levelInfo.Number,
+                timestamp: Date.now()
+              };
+              console.log(`📌 Обновлен lastKnownLevel после подтверждения: уровень ${levelInfo.Number} (ID: ${levelInfo.LevelId})`);
+            }
+
+            await saveUserData();
+
+            await sendMessage(platform, userId,
+              `Ответ "${decision.answer}" отправлен в уровень ${decision.newLevel}\n${result.message}`
+            );
+          } else {
+            await sendMessage(platform, userId,
+              `❌ Ошибка при отправке: ${result.message || 'Неизвестная ошибка'}`
+            );
+          }
+
+          if (result.newCookies) {
+            user.authCookies = { ...(user.authCookies || {}), ...(result.newCookies || {}) };
+            await saveUserData();
+          }
+        } catch (error) {
+          console.error('Ошибка отправки ответа после подтверждения:', error);
+          await sendMessage(platform, userId,
+            `❌ Ошибка отправки: ${error.message}`
+          );
+        }
+      } else if (data === 'answer_cancel') {
+        // Отменить отправку
+        console.log(`🚫 Пользователь выбрал: отменить отправку "${decision.answer}"`);
+
+        user.pendingAnswerDecision = null;
+
+        // Обновляем lastKnownLevel до актуального состояния игры
+        try {
+          const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
+          const api = new EncounterAPI(user.domain, authCallback);
+          const gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
+
+          if (gameState.success && gameState.data?.Level) {
+            user.lastKnownLevel = {
+              levelId: gameState.data.Level.LevelId,
+              levelNumber: gameState.data.Level.Number,
+              timestamp: Date.now()
+            };
+            console.log(`📌 Обновлен lastKnownLevel после отмены ответа: уровень ${gameState.data.Level.Number} (ID: ${gameState.data.Level.LevelId})`);
+          }
+        } catch (error) {
+          console.error('⚠️ Ошибка обновления lastKnownLevel при отмене:', error.message);
+        }
+
+        await saveUserData();
+
+        if (queryId) {
+          await answerCb({
+            queryId,
+            text: '🚫 Ответ отменён'
+          });
+        }
+
+        await sendMessage(platform, userId,
+          `🚫 Ответ "${decision.answer}" отменён\n\n` +
+          `(Был подготовлен для уровня ${decision.oldLevel}, текущий уровень — ${decision.newLevel})`
+        );
+      }
+
+      return;
+    } catch (error) {
+      console.error('Ошибка обработки выбора ответа:', error);
+      if (queryId) {
+        await answerCb({
+          queryId,
+          text: '❌ Ошибка обработки',
+          show_alert: true
+        });
+      }
+      return;
+    }
+  }
+
+  // Обработка кнопок управления накопленными кодами (доступно для всех платформ)
+  if (data === 'batch_send_all' || data === 'batch_send_force' || data === 'batch_cancel_all' || data === 'batch_list') {
+    try {
+      const user = getPlatformUser(platform, userId);
+
+      if (data === 'batch_send_all') {
+        // Отправить все накопленные коды
+        console.log(`✅ Пользователь выбрал: отправить ${user.accumulatedAnswers?.length || 0} накопленных кодов`);
+
+        if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
+          if (queryId) {
+            await answerCb({
+              queryId,
+              text: '⚠️ Нет накопленных кодов',
+              show_alert: true
+            });
+          }
+          return;
+        }
+
+        if (queryId) {
+          await answerCb({
+            queryId,
+            text: `Отправка ${user.accumulatedAnswers.length} ${user.accumulatedAnswers.length === 1 ? 'кода' : 'кодов'}...`
+          });
+        }
+
+        // Вызываем функцию отправки пачки с защитой
+        await processBatchSend(platform, userId);
+
+      } else if (data === 'batch_send_force') {
+        // Принудительная отправка (когда уровень изменился, но пользователь хочет отправить в новый)
+        console.log(`✅ Пользователь выбрал: принудительно отправить в новый уровень`);
+
+        if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
+          if (queryId) {
+            await answerCb({
+              queryId,
+              text: '⚠️ Нет накопленных кодов',
+              show_alert: true
+            });
+          }
+          return;
+        }
+
+        if (queryId) {
+          await answerCb({
+            queryId,
+            text: `Принудительная отправка...`
+          });
+        }
+
+        // Сбрасываем accumulationStartLevel чтобы обойти первую проверку
+        user.accumulationStartLevel = null;
+        await saveUserData();
+
+        // Вызываем отправку пачки
+        await processBatchSend(platform, userId);
+
+      } else if (data === 'batch_cancel_all') {
+        // Отменить все накопленные коды
+        const count = user.accumulatedAnswers?.length || 0;
+        console.log(`🚫 Пользователь выбрал: отменить ${count} накопленных кодов`);
+
+        if (count === 0) {
+          if (queryId) {
+            await answerCb({
+              queryId,
+              text: '⚠️ Нет накопленных кодов',
+              show_alert: true
+            });
+          }
+          return;
+        }
+
+        // Обновляем lastKnownLevel до актуального состояния игры
+        try {
+          const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
+          const api = new EncounterAPI(user.domain, authCallback);
+          const gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
+
+          if (gameState.success && gameState.data?.Level) {
+            user.lastKnownLevel = {
+              levelId: gameState.data.Level.LevelId,
+              levelNumber: gameState.data.Level.Number,
+              timestamp: Date.now()
+            };
+            console.log(`📌 Обновлен lastKnownLevel после отмены пачки: уровень ${gameState.data.Level.Number} (ID: ${gameState.data.Level.LevelId})`);
+          }
+        } catch (error) {
+          console.error('⚠️ Ошибка обновления lastKnownLevel при отмене:', error.message);
+        }
+
+        // Очищаем буфер накопления
+        user.accumulatedAnswers = [];
+        user.isAccumulatingAnswers = false;
+        user.accumulationStartLevel = null;
+        if (user.accumulationTimer) {
+          clearTimeout(user.accumulationTimer);
+          user.accumulationTimer = null;
+        }
+        clearBurstTimer(user);
+        user.pendingBurstAnswers = [];
+        await saveUserData();
+
+        if (queryId) {
+          await answerCb({
+            queryId,
+            text: '🚫 Все коды отменены'
+          });
+        }
+
+        await sendMessage(platform, userId,
+          `🚫 Отменено ${count} ${count === 1 ? 'код' : count < 5 ? 'кода' : 'кодов'}`
+        );
+
+      } else if (data === 'batch_list') {
+        // Показать полный список накопленных кодов
+        console.log(`📋 Пользователь запросил список накопленных кодов`);
+
+        if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
+          if (queryId) {
+            await answerCb({
+              queryId,
+              text: '⚠️ Нет накопленных кодов',
+              show_alert: true
+            });
+          }
+          return;
+        }
+
+        const allCodes = user.accumulatedAnswers
+          .map((item, index) => `${index + 1}. "${item.answer}" (уровень ${item.levelNumber || '?'})`)
+          .join('\n');
+
+        if (queryId) {
+          await answerCb({ queryId });
+        }
+
+        await sendMessage(platform, userId,
+          `📋 Полный список накопленных кодов (${user.accumulatedAnswers.length}):\n\n${allCodes}`
+        );
+
+      }
+
+      return;
+    } catch (error) {
+      console.error('Ошибка обработки накопленных кодов:', error);
+      if (queryId) {
+        await answerCb({
+          queryId,
+          text: '❌ Ошибка обработки',
+          show_alert: true
+        });
+      }
+      return;
+    }
+  }
+
+  // Telegram-специфичные callback'и (админ-панель)
+  if (platform !== TELEGRAM_PLATFORM) {
     return;
   }
 
   if (data.startsWith('admin_') && Number(chatId) !== ROOT_USER_ID) {
     if (queryId) {
-      await answerCallback(platform, {
+      await answerCb({
         queryId,
         text: '❌ У вас нет доступа',
         show_alert: true
@@ -333,56 +834,413 @@ async function handleCallback(context) {
     if (data.startsWith('admin_users_')) {
       const page = parseInt(data.split('_')[2], 10) || 0;
       await showUsersList(chatId, messageId, page);
-      if (queryId) await answerCallback(platform, { queryId });
+      if (queryId) await answerCb({ queryId });
     } else if (data === 'admin_moderation') {
       await showModerationMenu(chatId, messageId);
-      if (queryId) await answerCallback(platform, { queryId });
+      if (queryId) await answerCb({ queryId });
     } else if (data.startsWith('admin_whitelist_')) {
       const page = parseInt(data.split('_')[2], 10) || 0;
       clearUserState(platform, userId);
       await showWhitelistMenu(chatId, messageId, page);
-      if (queryId) await answerCallback(platform, { queryId });
+      if (queryId) await answerCb({ queryId });
     } else if (data === 'admin_back') {
       clearUserState(platform, userId);
       if (messageId) {
         await deleteMessage(platform, chatId, messageId);
       }
       await showAdminMainMenu(chatId);
-      if (queryId) await answerCallback(platform, { queryId });
+      if (queryId) await answerCb({ queryId });
     } else if (data === 'moderation_toggle') {
       adminConfig.moderationEnabled = !adminConfig.moderationEnabled;
       await saveAdminConfig();
       await showModerationMenu(chatId, messageId);
       if (queryId) {
-        await answerCallback(platform, {
+        await answerCb({
           queryId,
           text: adminConfig.moderationEnabled ? '✅ Модерация включена' : '❌ Модерация выключена'
         });
       }
     } else if (data === 'whitelist_add') {
       await handleWhitelistAdd(chatId, messageId);
-      if (queryId) await answerCallback(platform, { queryId });
+      if (queryId) await answerCb({ queryId });
     } else if (data.startsWith('whitelist_remove_')) {
       const index = parseInt(data.split('_')[2], 10);
       await handleWhitelistRemove(chatId, messageId, index, queryId);
       if (queryId) {
-        await answerCallback(platform, {
+        await answerCb({
           queryId,
           text: '🗑️ Удалено из белого списка'
         });
       }
     } else if (queryId) {
-      await answerCallback(platform, { queryId });
+      await answerCb({ queryId });
     }
   } catch (error) {
     console.error('Ошибка обработки callback_query:', error);
     if (queryId) {
-      await answerCallback(platform, {
+      await answerCb({
         queryId,
         text: '❌ Ошибка обработки команды',
         show_alert: true
       });
     }
+  }
+}
+
+/**
+ * Отправка пачки накопленных кодов с двухуровневой защитой
+ * 1. Проверка уровня ПЕРЕД началом отправки
+ * 2. Проверка уровня ПОСЛЕ каждого отправленного кода
+ */
+async function processBatchSend(platform, userId) {
+  const user = getPlatformUser(platform, userId);
+
+  if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
+    console.log(`⚠️ Нет накопленных кодов для отправки`);
+    await sendMessage(platform, userId, '⚠️ Нет накопленных кодов');
+    return;
+  }
+
+  const totalCodes = user.accumulatedAnswers.length;
+  const startLevel = user.accumulationStartLevel;
+
+  console.log(`📤 Начало отправки пачки: ${totalCodes} кодов (уровень на момент накопления: ${startLevel?.levelNumber || '?'})`);
+
+  try {
+    // 🛡️ ЗАЩИТА УРОВЕНЬ 1: Проверка ПЕРЕД началом отправки
+    console.log(`🔍 Проверка уровня ПЕРЕД отправкой пачки...`);
+
+    const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
+    const api = new EncounterAPI(user.domain, authCallback);
+
+    const gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
+
+    if (!gameState.success || !gameState.data || !gameState.data.Level) {
+      throw new Error('Не удалось получить состояние игры');
+    }
+
+    const currentLevelId = gameState.data.Level.LevelId;
+    const currentLevelNumber = gameState.data.Level.Number;
+
+    console.log(`📋 Уровень на момент накопления: ${startLevel?.levelNumber} (ID: ${startLevel?.levelId})`);
+    console.log(`📋 Текущий уровень: ${currentLevelNumber} (ID: ${currentLevelId})`);
+
+    // Если уровень изменился - предупреждаем
+    if (startLevel?.levelId && currentLevelId !== startLevel.levelId) {
+      console.log(`⚠️ Уровень изменился (${startLevel.levelNumber} → ${currentLevelNumber}), спрашиваем пользователя`);
+
+      const codesList = user.accumulatedAnswers
+        .slice(0, 5)
+        .map((item, index) => `${index + 1}. "${item.answer}"`)
+        .join('\n');
+      const moreCodesText = totalCodes > 5 ? `\n... и ещё ${totalCodes - 5}` : '';
+
+      const messageText =
+        `⚠️ Уровень изменился (${startLevel.levelNumber} → ${currentLevelNumber})\n\n` +
+        `Накоплено ${totalCodes} ${totalCodes === 1 ? 'код' : totalCodes < 5 ? 'кода' : 'кодов'}:\n${codesList}${moreCodesText}\n\n` +
+        `Что делать?`;
+
+      let options = {};
+      if (platform === 'telegram') {
+        options = {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: `✅ Отправить в уровень ${currentLevelNumber}`, callback_data: 'batch_send_force' },
+              { text: '🚫 Отменить', callback_data: 'batch_cancel_all' }
+            ]]
+          }
+        };
+      } else if (platform === 'vk') {
+        options = {
+          keyboard: {
+            type: 'inline',
+            buttons: [[
+              { label: `✅ Отправить в уровень ${currentLevelNumber}`, payload: { action: 'batch_send_force' } },
+              { label: '🚫 Отменить', payload: { action: 'batch_cancel_all' } }
+            ]]
+          }
+        };
+      }
+
+      await sendMessage(platform, userId, messageText, options);
+      return;
+    }
+
+    console.log(`✅ Уровень не изменился, начинаем отправку`);
+
+    const normalizeCount = value => {
+      if (value === undefined || value === null) {
+        return null;
+      }
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+
+    const formatSectors = (passed, required) => {
+      if (passed === null || required === null) {
+        return '—';
+      }
+      return `${passed}/${required}`;
+    };
+
+    const buildBatchProgressMessage = ({ progress, total, answer, statusText, levelNumber, sectorsText }) => {
+      const levelDisplay = levelNumber ?? '—';
+      const safeAnswer = answer ?? '—';
+      const lines = [
+        `📤 Отправка пачки: ${progress}/${total}`,
+        `💬 "${safeAnswer}": ${statusText}`,
+        `🎯 Уровень: ${levelDisplay}`
+      ];
+      if (sectorsText && sectorsText !== '—') {
+        lines.push(`📊 Сектора: ${sectorsText}`);
+      }
+      return lines.join('\n');
+    };
+
+    const buildStatusText = rawMessage => {
+      const message = rawMessage || 'Отправлен';
+      const lower = message.toLowerCase();
+      const isNegative = lower.includes('невер') || lower.includes('ошиб');
+      const emoji = isNegative ? '👎' : '👍';
+      return `${emoji} ${message}`;
+    };
+
+    let latestLevelNumber = currentLevelNumber ?? null;
+    let latestPassed = normalizeCount(gameState.data.Level?.PassedSectorsCount);
+    let latestRequired = normalizeCount(gameState.data.Level?.RequiredSectorsCount);
+
+    // Начинаем отправку
+    let sent = 0;
+    let stopped = false;
+    const batchCopy = [...user.accumulatedAnswers];
+    const sentCodes = []; // Статистика отправленных кодов
+
+    const initialMessage = buildBatchProgressMessage({
+      progress: 0,
+      total: totalCodes,
+      answer: batchCopy[0]?.answer ?? '—',
+      statusText: '⏳ Подготовка...',
+      levelNumber: latestLevelNumber,
+      sectorsText: formatSectors(latestPassed, latestRequired)
+    });
+
+    const progressMsg = await sendMessage(platform, userId, initialMessage);
+
+    for (let i = 0; i < batchCopy.length; i++) {
+      const item = batchCopy[i];
+      const processed = i + 1;
+
+      console.log(`📤 Отправка кода ${i + 1}/${totalCodes}: "${item.answer}"`);
+
+      const sendingMessage = buildBatchProgressMessage({
+        progress: processed,
+        total: totalCodes,
+        answer: item.answer,
+        statusText: '⏳ Отправляю...',
+        levelNumber: latestLevelNumber,
+        sectorsText: formatSectors(latestPassed, latestRequired)
+      });
+
+      await sendOrUpdateMessage(platform, userId, sendingMessage, progressMsg.message_id);
+
+      try {
+        const result = await api.sendAnswer(user.gameId, item.answer, user.authCookies, user.login, user.password, false, currentLevelId);
+
+        if (result.success) {
+          sent++;
+          console.log(`✅ Код "${item.answer}" отправлен (${sent}/${totalCodes})`);
+
+          if (result.level) {
+            latestLevelNumber = result.level.Number ?? latestLevelNumber;
+            latestPassed = normalizeCount(result.level.PassedSectorsCount);
+            latestRequired = normalizeCount(result.level.RequiredSectorsCount);
+          }
+
+          const statusText = buildStatusText(result.message);
+          const statusMessage = buildBatchProgressMessage({
+            progress: processed,
+            total: totalCodes,
+            answer: item.answer,
+            statusText,
+            levelNumber: latestLevelNumber,
+            sectorsText: formatSectors(latestPassed, latestRequired)
+          });
+
+          await sendOrUpdateMessage(platform, userId, statusMessage, progressMsg.message_id);
+
+          // Собираем детальную статистику
+          const codeStats = {
+            answer: item.answer,
+            statusText,
+            levelNumber: latestLevelNumber ?? currentLevelNumber,
+            levelName: result.level?.Name || 'N/A',
+            sectors: formatSectors(latestPassed, latestRequired)
+          };
+          sentCodes.push(codeStats);
+
+          // 🛡️ ЗАЩИТА УРОВЕНЬ 2: Проверка ПОСЛЕ отправки кода
+          if (result.level && result.level.LevelId !== currentLevelId) {
+            console.log(`⚠️ Уровень изменился во время отправки (${currentLevelNumber} → ${result.level.Number})`);
+            stopped = true;
+
+            // Удаляем отправленные коды из буфера
+            user.accumulatedAnswers.splice(0, sent);
+            await saveUserData();
+
+            const remaining = totalCodes - sent;
+            const remainingList = user.accumulatedAnswers
+              .slice(0, 5)
+              .map(code => `"${code.answer}"`)
+              .join(', ');
+            const moreText = remaining > 5 ? ` и ещё ${remaining - 5}` : '';
+
+            const messageText =
+              `⚠️ Уровень изменился во время отправки!\n\n` +
+              `📊 Отправлено: ${sent}/${totalCodes}\n` +
+              `📦 Осталось: ${remaining}\n\n` +
+              `Оставшиеся коды: ${remainingList}${moreText}\n\n` +
+              `Что делать с оставшимися кодами?`;
+
+            let options = {};
+            if (platform === 'telegram') {
+              options = {
+                reply_markup: {
+                  inline_keyboard: [[
+                    { text: `✅ Отправить в уровень ${result.level.Number}`, callback_data: 'batch_send_force' },
+                    { text: '🚫 Отменить', callback_data: 'batch_cancel_all' }
+                  ]]
+                }
+              };
+            } else if (platform === 'vk') {
+              options = {
+                keyboard: {
+                  type: 'inline',
+                  buttons: [[
+                    { label: `✅ Отправить в уровень ${result.level.Number}`, payload: { action: 'batch_send_force' } },
+                    { label: '🚫 Отменить', payload: { action: 'batch_cancel_all' } }
+                  ]]
+                }
+              };
+            }
+
+            await sendMessage(platform, userId, messageText, options);
+            break;
+          }
+
+          if (result.newCookies) {
+            user.authCookies = { ...(user.authCookies || {}), ...(result.newCookies || {}) };
+            await saveUserData();
+          }
+        } else {
+          const statusText = `❌ ${result.message || 'Не отправлен'}`;
+          const statusMessage = buildBatchProgressMessage({
+            progress: processed,
+            total: totalCodes,
+            answer: item.answer,
+            statusText,
+            levelNumber: latestLevelNumber,
+            sectorsText: formatSectors(latestPassed, latestRequired)
+          });
+
+          await sendOrUpdateMessage(platform, userId, statusMessage, progressMsg.message_id);
+
+          sentCodes.push({
+            answer: item.answer,
+            statusText,
+            levelNumber: latestLevelNumber ?? currentLevelNumber,
+            levelName: result.level?.Name || 'N/A',
+            sectors: formatSectors(latestPassed, latestRequired)
+          });
+        }
+      } catch (error) {
+        console.error(`❌ Ошибка отправки кода "${item.answer}":`, error.message);
+
+        // Если уровень изменился - прерываем
+        if (error.isLevelChanged) {
+          stopped = true;
+
+          user.accumulatedAnswers.splice(0, sent);
+          await saveUserData();
+
+          await sendMessage(platform, userId,
+            `⚠️ Уровень изменился во время отправки!\n\n` +
+            `📊 Отправлено: ${sent}/${totalCodes}\n` +
+            `📦 Осталось: ${totalCodes - sent}\n\n` +
+            `Используйте кнопки выше для выбора.`
+          );
+          break;
+        }
+
+        // Для других ошибок - продолжаем
+        const statusText = `❌ Ошибка: ${error.message}`;
+        const statusMessage = buildBatchProgressMessage({
+          progress: processed,
+          total: totalCodes,
+          answer: item.answer,
+          statusText,
+          levelNumber: latestLevelNumber,
+          sectorsText: formatSectors(latestPassed, latestRequired)
+        });
+
+        await sendOrUpdateMessage(platform, userId, statusMessage, progressMsg.message_id);
+
+        sentCodes.push({
+          answer: item.answer,
+          statusText,
+          levelNumber: latestLevelNumber ?? currentLevelNumber,
+          levelName: 'N/A',
+          sectors: formatSectors(latestPassed, latestRequired)
+        });
+      }
+
+      // Задержка между отправками
+      if (i < batchCopy.length - 1) {
+        console.log('⏱️ Задержка 1.2 секунды перед следующим кодом...');
+        await new Promise(resolve => setTimeout(resolve, 1200));
+      }
+    }
+
+    if (!stopped) {
+      // Все коды отправлены успешно
+      user.accumulatedAnswers = [];
+      user.isAccumulatingAnswers = false;
+      user.accumulationStartLevel = null;
+      if (user.accumulationTimer) {
+        clearTimeout(user.accumulationTimer);
+        user.accumulationTimer = null;
+      }
+      await saveUserData();
+
+      // Формируем детальный итоговый отчет
+      let finalReport = `✅ Пачка отправлена!\n\n📊 Отправлено: ${sent}/${totalCodes}`;
+
+      if (sentCodes.length > 0) {
+        finalReport += `\n\n📋 Детальный отчет:\n\n`;
+        sentCodes.forEach((code, index) => {
+          const num = index + 1;
+          finalReport += `${num}. "${code.answer}"\n`;
+          const levelDisplay = code.levelNumber ?? '—';
+          finalReport += `   ${code.statusText} | Уровень: ${levelDisplay}\n`;
+          if (index < sentCodes.length - 1) {
+            finalReport += `\n`;
+          }
+        });
+
+        // Показываем текущее состояние игры
+        const lastCode = sentCodes[sentCodes.length - 1];
+        const levelSummary = lastCode.levelNumber ?? '—';
+        finalReport += `\n📍 Текущий уровень: ${levelSummary}`;
+        if (lastCode.sectors && lastCode.sectors !== '—') {
+          finalReport += `\n📊 Текущие сектора: ${lastCode.sectors}`;
+        }
+      }
+
+      await sendOrUpdateMessage(platform, userId, finalReport, progressMsg.message_id);
+    }
+
+  } catch (error) {
+    console.error('Ошибка отправки пачки:', error);
+    await sendMessage(platform, userId, `❌ Ошибка отправки пачки: ${error.message}`);
   }
 }
 
@@ -397,6 +1255,19 @@ async function handleTextMessage(context) {
   }
 
   const user = getPlatformUser(platform, userId);
+
+  // Детект всплеска сообщений (оффлайн-пачка)
+  const now = Date.now();
+
+  // Добавляем текущую метку
+  user.recentMessageTimestamps = user.recentMessageTimestamps || [];
+  user.recentMessageTimestamps.push(now);
+
+  // Очищаем старые метки (> 10 секунд)
+  user.recentMessageTimestamps = user.recentMessageTimestamps.filter(
+    timestamp => (now - timestamp) < BURST_WINDOW
+  );
+
   let currentState = getUserState(platform, userId);
 
   if (!currentState) {
@@ -552,7 +1423,165 @@ async function handleGameUrlInput(platform, userId, user, text) {
   await sendMessage(platform, userId, message, keyboardOptions);
 }
 
+function ensureBurstBuffer(user) {
+  if (!Array.isArray(user.pendingBurstAnswers)) {
+    user.pendingBurstAnswers = [];
+  }
+}
+
+function clearBurstTimer(user) {
+  if (user.pendingBurstTimer) {
+    clearTimeout(user.pendingBurstTimer);
+    user.pendingBurstTimer = null;
+  }
+}
+
+function scheduleBurstTimer(platform, userId, user, delay) {
+  clearBurstTimer(user);
+  const timeout = Math.max(delay, 0);
+  user.pendingBurstTimer = setTimeout(() => {
+    user.pendingBurstTimer = null;
+    triggerBurstProcessing(platform, userId).catch((error) => {
+      console.error('[burst] Ошибка повторной обработки:', error);
+    });
+  }, timeout);
+}
+
+function getAccumulationSlice(pending) {
+  if (!pending || pending.length < BURST_THRESHOLD) {
+    return null;
+  }
+
+  const slice = pending.slice(-BURST_THRESHOLD);
+  const firstTs = slice[0].timestamp;
+  const lastTs = slice[slice.length - 1].timestamp;
+  if ((lastTs - firstTs) > BURST_WINDOW) {
+    return null;
+  }
+
+  for (let i = 1; i < slice.length; i++) {
+    if ((slice[i].timestamp - slice[i - 1].timestamp) > MESSAGE_INTERVAL_MAX) {
+      return null;
+    }
+  }
+
+  return slice;
+}
+
+async function processPendingEntry(platform, userId, entry) {
+  if (!entry) {
+    return;
+  }
+
+  try {
+    const result = await sendAnswerToEncounter(platform, userId, entry.answer, entry.progressMessageId);
+    if (entry.resolve) {
+      entry.resolve(result);
+    }
+  } catch (error) {
+    console.error('[burst] Ошибка обработки ответа из буфера:', error);
+    if (entry.resolve) {
+      entry.resolve(null);
+    }
+  }
+}
+
+async function drainAllPending(platform, userId, user) {
+  clearBurstTimer(user);
+  while (user.pendingBurstAnswers && user.pendingBurstAnswers.length > 0) {
+    const entry = user.pendingBurstAnswers.shift();
+    await processPendingEntry(platform, userId, entry);
+  }
+}
+
+async function triggerBurstProcessing(platform, userId) {
+  const user = getPlatformUser(platform, userId);
+  if (!user) {
+    return;
+  }
+
+  ensureBurstBuffer(user);
+
+  if (user._burstProcessing) {
+    user._burstProcessingRequested = true;
+    return;
+  }
+
+  user._burstProcessing = true;
+
+  try {
+    while (true) {
+      if (!user.pendingBurstAnswers || user.pendingBurstAnswers.length === 0) {
+        clearBurstTimer(user);
+        break;
+      }
+
+      if (user.isAccumulatingAnswers) {
+        await drainAllPending(platform, userId, user);
+        continue;
+      }
+
+      const accumulationSlice = getAccumulationSlice(user.pendingBurstAnswers);
+      if (accumulationSlice) {
+        const spanMs = accumulationSlice[accumulationSlice.length - 1].timestamp - accumulationSlice[0].timestamp;
+        console.log(`🔍 Детект оффлайн-пачки: ${accumulationSlice.length} сообщений за ${(spanMs / 1000).toFixed(2)}с`);
+
+        user.isAccumulatingAnswers = true;
+        user.accumulatedAnswers = user.accumulatedAnswers || [];
+        user.accumulationStartLevel = user.accumulationStartLevel || user.lastKnownLevel || null;
+        console.log(`📦 Режим накопления активирован (уровень: ${user.accumulationStartLevel?.levelNumber || '?'})`);
+
+        await drainAllPending(platform, userId, user);
+        continue;
+      }
+
+      const oldest = user.pendingBurstAnswers[0];
+      const now = Date.now();
+      const elapsed = now - oldest.timestamp;
+
+      if (elapsed >= MESSAGE_INTERVAL_MAX) {
+        const entry = user.pendingBurstAnswers.shift();
+        await processPendingEntry(platform, userId, entry);
+        continue;
+      }
+
+      scheduleBurstTimer(platform, userId, user, MESSAGE_INTERVAL_MAX - elapsed);
+      break;
+    }
+  } finally {
+    user._burstProcessing = false;
+    if (user._burstProcessingRequested) {
+      user._burstProcessingRequested = false;
+      await triggerBurstProcessing(platform, userId);
+    }
+  }
+}
+
+async function queueAnswerForProcessing(platform, userId, user, answer, progressMessageId) {
+  ensureBurstBuffer(user);
+  const timestamp = Date.now();
+
+  return new Promise((resolve) => {
+    user.pendingBurstAnswers.push({
+      answer,
+      timestamp,
+      progressMessageId,
+      resolve
+    });
+
+    triggerBurstProcessing(platform, userId).catch((error) => {
+      console.error('[burst] Ошибка запуска обработки:', error);
+      resolve(null);
+    });
+  });
+}
+
 async function handleReadyStateInput(platform, userId, user, text, context) {
+  if (text === '🔄 Рестарт бота') {
+    await handleStartCommand(context);
+    return;
+  }
+
   if (text === 'Задание' || text === 'Задание (формат)') {
     const formatted = text === 'Задание (формат)';
     await sendLevelTask(platform, userId, user, formatted);
@@ -566,20 +1595,16 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
 
     const waitMsg = await sendMessage(platform, userId, '🔄 Получаю список секторов...');
     try {
-      const api = new EncounterAPI(user.domain);
+      // Используем централизованную авторизацию с мьютексом
+      const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
+      const api = new EncounterAPI(user.domain, authCallback);
 
-      if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
-        const auth = await api.authenticate(user.login, user.password);
-        if (!auth.success) {
-          throw new Error(auth.message || 'Не удалось авторизоваться');
-        }
-        user.authCookies = auth.cookies;
-        await saveUserData();
-      }
+      // Предварительная авторизация если нет cookies
+      await ensureAuthenticated(user, EncounterAPI, saveUserData);
 
       let gameState;
       try {
-        gameState = await api.getGameState(user.gameId, user.authCookies);
+        gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
       } catch (e) {
         const msg = String(e.message || '').toLowerCase();
         if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
@@ -673,6 +1698,7 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
       return;
     }
 
+    resetUserRuntimeState(user);
     user.authCookies = null;
     await saveUserData();
     setUserState(platform, userId, STATES.WAITING_FOR_GAME_URL);
@@ -685,6 +1711,7 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
   }
 
   if (text === '👤 Сменить авторизацию') {
+    resetUserRuntimeState(user);
     user.authCookies = null;
     await saveUserData();
     setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
@@ -698,7 +1725,7 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
 
   const progressMessage = await sendMessage(platform, userId, `⏳ Отправляю ответ "${text}"...`);
   const progressMessageId = progressMessage?.message_id ?? progressMessage?.conversation_message_id ?? null;
-  const result = await sendAnswerToEncounter(platform, userId, text, progressMessageId);
+  const result = await queueAnswerForProcessing(platform, userId, user, text, progressMessageId);
 
   if (result && user.answerQueue.length > 0) {
     setTimeout(() => processAnswerQueue(platform, userId), 1200);
@@ -717,20 +1744,16 @@ async function sendLevelTask(platform, userId, user, formatted) {
   const waitMsg = await sendMessage(platform, userId, waitText);
 
   try {
-    const api = new EncounterAPI(user.domain);
+    // Используем централизованную авторизацию с мьютексом
+    const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
+    const api = new EncounterAPI(user.domain, authCallback);
 
-    if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
-      const auth = await api.authenticate(user.login, user.password);
-      if (!auth.success) {
-        throw new Error(auth.message || 'Не удалось авторизоваться');
-      }
-      user.authCookies = auth.cookies;
-      await saveUserData();
-    }
+    // Предварительная авторизация если нет cookies
+    await ensureAuthenticated(user, EncounterAPI, saveUserData);
 
     let gameState;
     try {
-      gameState = await api.getGameState(user.gameId, user.authCookies);
+      gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
     } catch (error) {
       const msg = String(error.message || '').toLowerCase();
       if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
@@ -909,11 +1932,10 @@ function rebuildWhitelistCache() {
 
 // Создание клавиатуры для главного меню
 const MAIN_MENU_LAYOUT = [
-  ['Задание'],
-  ['Задание (формат)'],
+  ['Задание', 'Задание (формат)'],
   ['Сектора'],
-  ['📊 Статус очереди', '🔗 Сменить игру'],
-  ['👤 Сменить авторизацию']
+  ['🔗 Сменить игру', '👤 Сменить авторизацию'],
+  ['🔄 Рестарт бота']
 ];
 
 function createMainKeyboard(platform) {
@@ -1905,6 +2927,37 @@ function registerTelegramHandlers() {
 // Запуск бота
 async function startBot() {
   await loadUserData();
+
+  let clearedVkBuffers = 0;
+  let clearedVkAnswers = 0;
+
+  for (const user of userData.values()) {
+    const isVkUser = user.platform === VK_PLATFORM;
+    const hasStaleAccumulation = user.isAccumulatingAnswers === true &&
+      (user.accumulationTimer == null) &&
+      Array.isArray(user.accumulatedAnswers) &&
+      user.accumulatedAnswers.length > 0;
+
+    if (isVkUser && hasStaleAccumulation) {
+      const removed = user.accumulatedAnswers.length;
+      user.accumulatedAnswers = [];
+      user.isAccumulatingAnswers = false;
+      user.accumulationStartLevel = null;
+      user.accumulationTimer = null;
+      user.recentMessageTimestamps = [];
+
+      clearedVkBuffers += 1;
+      clearedVkAnswers += removed;
+
+      console.log(`[vk] Очистка устаревшего буфера накопления для ${user.userId}: удалено ${removed} код(ов)`);
+    }
+  }
+
+  if (clearedVkBuffers > 0) {
+    await saveUserData();
+    console.log(`🧹 Сброшено ${clearedVkBuffers} VK-буфер(ов) накопления (${clearedVkAnswers} кодов)`);
+  }
+
   await loadAdminConfig();
   await telegramAdapter.start();
   bot = telegramAdapter.getBot();
@@ -2030,6 +3083,34 @@ async function startBot() {
           } catch (_) {
             // ignore typing capabilities absence
           }
+        },
+        answerCallback: async (data = {}) => {
+          try {
+            const { eventId, peerId, userId, text } = data;
+
+            if (!eventId) {
+              console.warn('[vk] answerCallback: eventId не указан');
+              return;
+            }
+
+            const payload = {
+              event_id: eventId,
+              peer_id: peerId || userId,
+              user_id: userId
+            };
+
+            // Если есть текст, показываем его как всплывающее уведомление
+            if (text) {
+              payload.event_data = JSON.stringify({
+                type: 'show_snackbar',
+                text: text
+              });
+            }
+
+            await vkAdapterInstance.vk.api.messages.sendMessageEventAnswer(payload);
+          } catch (error) {
+            console.error('[vk] Ошибка answerCallback:', error.message);
+          }
         }
       });
 
@@ -2101,5 +3182,3 @@ process.on('SIGTERM', async () => {
   }
   process.exit(0);
 });
-
-

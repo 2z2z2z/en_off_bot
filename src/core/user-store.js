@@ -25,6 +25,21 @@ const createEmptyUser = (platform, userId) => {
     answerQueue: [],
     isOnline: true,
     isProcessingQueue: false,
+    isAuthenticating: false,
+    authPromise: null,
+    pendingQueueDecision: null,
+    pendingAnswerDecision: null,
+    lastKnownLevel: null,  // Последний известный уровень { levelId, levelNumber, timestamp }
+    // Система накопления кодов для детекта оффлайн-пачки
+    recentMessageTimestamps: [],  // Временные метки последних сообщений для детекта всплеска
+    isAccumulatingAnswers: false,  // Флаг режима накопления
+    accumulatedAnswers: [],  // Буфер накопленных кодов { answer, timestamp, levelId, levelNumber }
+    accumulationStartLevel: null,  // Уровень на момент начала накопления { levelId, levelNumber }
+    accumulationTimer: null,  // ID таймера для завершения накопления
+    pendingBurstAnswers: [],  // Временный буфер сообщений до решения о пачке
+    pendingBurstTimer: null,  // Таймер ожидания перед отправкой одиночного ответа
+    _burstProcessing: false,
+    _burstProcessingRequested: false,
     telegramUsername: null,
     telegramFirstName: null,
     firstActivity: now,
@@ -144,6 +159,18 @@ async function loadUserData(customPath) {
         } else if (userInfo.isProcessingQueue) {
           userInfo.isProcessingQueue = false;
         }
+        if (!userInfo.hasOwnProperty('pendingQueueDecision')) {
+          userInfo.pendingQueueDecision = null;
+          migrationCount++;
+        }
+        if (!userInfo.hasOwnProperty('pendingAnswerDecision')) {
+          userInfo.pendingAnswerDecision = null;
+          migrationCount++;
+        }
+        if (!userInfo.hasOwnProperty('isAuthenticating')) {
+          userInfo.isAuthenticating = false;
+          migrationCount++;
+        }
 
         const storageKey = makeStorageKey(platform, userId);
 
@@ -176,6 +203,15 @@ async function saveUserData(customPath) {
     for (const [key, value] of userData.entries()) {
       const sanitizedUser = { ...value };
       delete sanitizedUser.isProcessingQueue;
+      delete sanitizedUser.isAuthenticating;
+      delete sanitizedUser.authPromise;
+      delete sanitizedUser.pendingQueueDecision;
+      delete sanitizedUser.pendingAnswerDecision;
+      delete sanitizedUser.accumulationTimer;  // Не сохраняем таймер
+      delete sanitizedUser.pendingBurstAnswers;
+      delete sanitizedUser.pendingBurstTimer;
+      delete sanitizedUser._burstProcessing;
+      delete sanitizedUser._burstProcessingRequested;
       if (typeof sanitizedUser.password === 'string' && sanitizedUser.password) {
         sanitizedUser.password = encryptSecret(sanitizedUser.password);
       }

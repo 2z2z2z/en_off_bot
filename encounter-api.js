@@ -12,9 +12,10 @@ class EncounterAPI {
   // Структура: { "domain_gameId_user": { levelId, levelNumber, timestamp, isPassed } }
   static levelCache = {};
 
-  constructor(domain) {
+  constructor(domain, authCallback = null) {
     this.domain = domain.startsWith('http') ? domain : `https://${domain}`;
     this.timeout = 10000; // 10 секунд таймаут
+    this.authCallback = authCallback; // Callback для централизованной авторизации с мьютексом
   }
 
   // Rate limiter: минимум 1.2 секунды между любыми запросами к одному домену
@@ -328,7 +329,16 @@ class EncounterAPI {
         console.log(`🔄 Сессия истекла, выполняю автоматическую реаутентификацию для ${login}...`);
 
         try {
-          const authResult = await this.authenticate(login, password);
+          let authResult;
+
+          // Используем authCallback если он есть (с мьютексом), иначе прямую авторизацию
+          if (this.authCallback) {
+            console.log(`🔐 Использую централизованную авторизацию с мьютексом`);
+            authResult = await this.authCallback();
+          } else {
+            console.log(`⚠️ Fallback: прямая авторизация без мьютекса`);
+            authResult = await this.authenticate(login, password);
+          }
 
           if (authResult.success) {
             console.log(`✅ Автоматическая реаутентификация успешна, повторяю запрос...`);
@@ -396,7 +406,7 @@ class EncounterAPI {
   }
 
   // Отправка ответа в игру по официальному API Encounter с автоматической реаутентификацией
-  async sendAnswer(gameId, answer, authCookies, login = null, password = null, isRetry = false) {
+  async sendAnswer(gameId, answer, authCookies, login = null, password = null, isRetry = false, expectedLevelId = null) {
     try {
       // Проверяем наличие cookies авторизации
       if (!authCookies || Object.keys(authCookies).length === 0) {
@@ -510,6 +520,16 @@ class EncounterAPI {
 
       console.log(`✅ Уровень ${levelData.levelNumber} готов к приему ответов`);
 
+      // Определяем ожидаемый levelId для проверки
+      const currentLevelIdFromState = levelData.levelId;
+      const currentLevelNumberFromState = levelData.levelNumber;
+
+      // Если expectedLevelId передан явно, используем его
+      // Иначе используем текущий из состояния
+      const expectedLevelIdForCheck = expectedLevelId || currentLevelIdFromState;
+
+      console.log(`📋 Проверка уровня: ожидаемый=${expectedLevelIdForCheck}, текущий из API=${currentLevelIdFromState}`);
+
       // Формируем cookie строку
       const cookieString = Object.entries(authCookies)
         .map(([key, value]) => `${key}=${value}`)
@@ -517,6 +537,34 @@ class EncounterAPI {
 
       // Отправляем ответ согласно документации API
       console.log(`📤 Отправляем ответ "${answer}" на уровень ${levelData.levelNumber} (LevelId: ${levelData.levelId})`);
+
+      // ВАЖНО: Проверяем уровень ПЕРЕД отправкой (защита от смены уровня)
+      console.log(`🔍 Проверка актуальности уровня перед отправкой...`);
+      const verifyState = await this.getGameState(gameId, authCookies, login, password);
+      if (verifyState.success && verifyState.data && verifyState.data.Level) {
+        const currentLevelId = verifyState.data.Level.LevelId;
+        const currentLevelNumber = verifyState.data.Level.Number;
+
+        console.log(`🔍 Финальная проверка: ожидаемый levelId=${expectedLevelIdForCheck}, текущий levelId=${currentLevelId}`);
+
+        // Проверяем изменение уровня относительно ОЖИДАЕМОГО уровня
+        if (currentLevelId !== expectedLevelIdForCheck) {
+          // Пытаемся определить номер ожидаемого уровня для сообщения
+          const expectedLevelNumber = (expectedLevelId === currentLevelIdFromState)
+            ? currentLevelNumberFromState
+            : '?';
+
+          console.log(`⚠️ ЗАЩИТА СРАБОТАЛА: Уровень изменился! Ожидался: ${expectedLevelNumber} (ID: ${expectedLevelIdForCheck}), текущий: ${currentLevelNumber} (ID: ${currentLevelId})`);
+          const error = new Error(`Уровень изменился (ожидался ${expectedLevelNumber}, текущий ${currentLevelNumber})`);
+          error.isLevelChanged = true;
+          error.oldLevel = expectedLevelNumber;
+          error.newLevel = currentLevelNumber;
+          error.answer = answer;
+          throw error;
+        }
+
+        console.log(`✅ Уровень актуален (${currentLevelNumber}, ID: ${currentLevelId}), продолжаем отправку`);
+      }
 
       // Rate limiting: ждём минимум 1.2 сек с последнего запроса к этому домену
       await this._waitRateLimit();
@@ -633,7 +681,16 @@ class EncounterAPI {
         console.log(`🔄 Сессия истекла при отправке ответа, выполняю автоматическую реаутентификацию для ${login}...`);
 
         try {
-          const authResult = await this.authenticate(login, password);
+          let authResult;
+
+          // Используем authCallback если он есть (с мьютексом), иначе прямую авторизацию
+          if (this.authCallback) {
+            console.log(`🔐 Использую централизованную авторизацию с мьютексом`);
+            authResult = await this.authCallback();
+          } else {
+            console.log(`⚠️ Fallback: прямая авторизация без мьютекса`);
+            authResult = await this.authenticate(login, password);
+          }
 
           if (authResult.success) {
             console.log(`✅ Автоматическая реаутентификация успешна, повторяю отправку ответа...`);
@@ -642,7 +699,8 @@ class EncounterAPI {
               ...(authResult.cookies || {})
             };
             // Повторяем отправку ответа с обновлёнными cookies (isRetry=true чтобы избежать бесконечной рекурсии)
-            const retryResult = await this.sendAnswer(gameId, answer, mergedCookies, login, password, true);
+            // ВАЖНО: передаем expectedLevelId для сохранения проверки уровня
+            const retryResult = await this.sendAnswer(gameId, answer, mergedCookies, login, password, true, expectedLevelId);
             // Добавляем информацию о новых cookies для обновления в основном коде
             retryResult.newCookies = mergedCookies;
             return retryResult;

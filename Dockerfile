@@ -17,6 +17,9 @@ COPY . .
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S botuser -u 1001
 
+# Выдаем права на директорию приложения
+RUN chown -R botuser:nodejs /app
+
 # Создаем директорию для данных и устанавливаем права
 RUN mkdir -p /app/data && chown botuser:nodejs /app/data
 

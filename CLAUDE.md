@@ -1,119 +1,70 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Это краткие ориентиры для работы с репозиторием.
 
 ## Project Overview
 
-This is a Telegram bot for the game "Encounter" that allows users to send answers even when offline. The bot queues answers and sends them automatically when connection is restored.
-
-**Core functionality:**
-- Telegram bot interface for Encounter game integration
-- Offline mode with answer queuing (auto-sends with 1.2s delay)
-- User session management with persistent storage in `user_data.json`
-- Direct integration with Encounter API endpoints
+Бот работает сразу в Telegram и VK, интегрирован с Encounter API. Поддерживает офлайн-очередь, буфер накопления и подтверждения при смене уровней. Пользовательские данные лежат в `user_data.json`, whitelist — в `admin_config.json`.
 
 ## Development Commands
 
-```bash
-# Start the bot (production)
-npm start
-
-# Start the bot (development)
-npm run dev
-
-# Install dependencies
-npm install
-```
+- `npm install` — установка зависимостей
+- `npm start` — запуск
+- Docker/PM2 сценарии см. в `docs/deployment.md`
 
 ## Architecture
 
 ### Main Components
 
-**index.js** (main bot logic)
-- Bot initialization and message handling
-- User state management (WAITING_FOR_LOGIN, WAITING_FOR_PASSWORD, WAITING_FOR_GAME_URL, READY)
-- Answer queue processing with retry logic
-- Telegram keyboard interface with buttons: "Задание", "Сектора", status, settings
-
-**encounter-api.js** (Encounter API wrapper)
-- `authenticate(login, password)` - Handles login via `/login/signin?json=1`
-- `getGameState(gameId, authCookies)` - Fetches current game state from `/GameEngines/Encounter/Play/{gameId}?json=1`
-- `sendAnswer(gameId, answer, authCookies)` - Submits answers to the game
-- `getGameInfo(gameId, authCookies)` - Gets game metadata
-- `checkConnection()` - Verifies domain connectivity
+- `index.js` — входная точка, состояния пользователей, обработка кнопок/команд, запуск адаптеров.
+- `src/core/answer-service.js` — логика Encounter, очередей, буфера накопления.
+- `src/core/auth-manager.js` — переавторизация и шифрование паролей.
+- `encounter-api.js` — HTTP клиент Encounter (rate limiting, кеш, retry).
+- `src/platforms/*` — адаптеры Telegram/VK через общий `PlatformAdapter`.
 
 ### Data Flow
 
-1. User authenticates with login/password → cookies stored in `user.authCookies`
-2. User provides game URL → parsed to extract `domain` and `gameId`
-3. User sends answers → bot checks online/offline status:
-   - Online: sends immediately via `sendAnswer()`
-   - Offline: adds to `user.answerQueue[]`
-4. Queue processing: auto-sends queued answers with 1.2s delays when online
+1. `/start` или «🔄 Рестарт» — настройка профиля, очистка временных состояний.
+2. Ответы попадают в буфер (`pendingBurstAnswers`) или очередь в зависимости от соединения.
+3. Encounter API вызывает `sendAnswer`/`getGameState` с кешированием уровня и переавторизацией.
+4. Пользовательские структуры обновляются через `saveUserData()`.
 
 ### State Management
 
-User data persisted in `user_data.json`:
-```javascript
-{
-  login: string,
-  password: string,
-  domain: string,
-  gameId: string,
-  authCookies: { GUID, stoken, atoken },
-  answerQueue: [{ answer, timestamp }],
-  isOnline: boolean
-}
-```
+`user_data.json` хранит логин, шифрованный пароль, домен, `gameId`, `authCookies`, флаги `isProcessingQueue`, `isAccumulatingAnswers`, буферы и очереди. При деплое через Docker путь можно переопределить переменной `DATA_FILE` (см. `docker-compose.yml`).
 
 ## Important Implementation Details
 
 ### Cookie Management
-- Auth cookies (`GUID`, `stoken`, `atoken`) are extracted from `/login/signin?json=1`
-- Cookies reset on domain/auth changes
-- Automatic re-authentication on 401/session expiry errors
+- Cookies обновляются автоматически (см. `encounter-api.js::sendAnswer`).
+- Проверяйте `result.newCookies` и сохраняйте их (уже реализовано в `answer-service`).
 
 ### Error Handling
-- Network errors (`ECONNREFUSED`, `ETIMEDOUT`) trigger offline queue mode
-- Auth errors trigger automatic re-login attempts
-- Event codes 1-22 from Encounter API map to specific error messages (see encounter-api.js:222-240)
-- Ignorable errors in queue (stale data) are skipped automatically
+- Сетевые ошибки переводят пользователя в офлайн-очередь.
+- При смене уровня создаётся `pendingAnswerDecision` / `pendingQueueDecision` с кнопками «Отправить / Отменить».
+- Каждая попытка обрабатывается с экспоненциальным backoff (см. `answer-service`).
 
 ### Game State Events
-Key `Event` values from Encounter API:
-- `0` - Game is active and ready
-- `4` - Player not authenticated
-- `16` - Level changed (triggers state refresh)
-- Other codes indicate various game/player states (see encounter-api.js:222-240)
+См. `encounter-api.js`, `resolveEvent()` — там собраны коды Encounter API (0 — активен, 16 — смена уровня и т.д.).
 
 ### URL Parsing
-Supports two game URL formats:
-1. `https://domain.en.cx/GameDetails.aspx?gid=XXXXX`
-2. `https://domain.en.cx/gameengines/encounter/play/XXXXX/`
+Парсер (`parseGameUrl`) принимает `GameDetails.aspx?gid=` и `gameengines/encounter/play/`.
 
 ### Queue Processing
-- Processes answers sequentially with 1.2s delays between each
-- Skips stale answers (level changed, unknown game errors)
-- Retries on auth errors (one automatic re-auth attempt)
-- Updates single progress message throughout processing
+Очередь (`processAnswerQueue`) и буфер накопления (`handleAccumulationComplete`) лежат в `answer-service`. Хендлеры callback’ов см. в `index.js`.
 
 ## Configuration
 
 Environment variables (`.env`):
-- `BOT_TOKEN` - Telegram bot token from @BotFather (required)
-- `DATA_FILE` - Path for user data storage (default: `user_data.json`)
+Основные переменные перечислены в README (раздел «Переменные окружения»). Локально используем `.env`, в Docker — `env_file`.
 
 ## Testing
 
-Use `/test` command to verify:
-- Domain connectivity
-- Authentication status
-- Game info retrieval
-- Current level/sector status
+Команда `/test` доступна после настройки — проверяет доступ к Encounter и выдаёт информацию об игре/уровне.
 
 ## Encounter API
 
-Docs: https://world.en.cx/Addons.aspx?aid=18832
+Справочник Encounter API: https://world.en.cx/Addons.aspx?aid=18832
 
 ## User Project rules
 

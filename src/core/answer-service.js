@@ -1,3 +1,5 @@
+const { ensureAuthenticated, createAuthCallback: createAuthCallbackHelper } = require('./auth-manager');
+
 function createAnswerService(deps) {
   const {
     EncounterAPI,
@@ -9,27 +11,41 @@ function createAnswerService(deps) {
     enqueueAnswer
   } = deps;
 
+  /**
+   * Обертка для createAuthCallback с передачей зависимостей
+   */
+  async function createAuthCallback(user) {
+    return createAuthCallbackHelper(user, EncounterAPI, saveUserData);
+  }
+
+  /**
+   * Обновление lastKnownLevel после успешного получения данных игры
+   */
+  function updateLastKnownLevel(user, levelData) {
+    if (levelData && levelData.levelId && levelData.levelNumber !== undefined) {
+      user.lastKnownLevel = {
+        levelId: levelData.levelId,
+        levelNumber: levelData.levelNumber,
+        timestamp: Date.now()
+      };
+      console.log(`📌 Сохранен уровень ${levelData.levelNumber} (ID: ${levelData.levelId})`);
+    }
+  }
+
   async function sendToEncounterAPI(user, answer) {
     try {
-      const api = new EncounterAPI(user.domain);
+      // Создаем API с callback авторизации
+      const authCallback = await createAuthCallback(user);
+      const api = new EncounterAPI(user.domain, authCallback);
 
-      if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
-        console.log(`🔐 Нет cookies, выполняем авторизацию для ${user.login}...`);
-        console.log(`🎮 Данные игры: домен=${user.domain}, ID=${user.gameId}`);
+      // Предварительная авторизация если нет cookies
+      await ensureAuthenticated(user, EncounterAPI, saveUserData);
 
-        const authResult = await api.authenticate(user.login, user.password);
-        if (authResult.success) {
-          user.authCookies = authResult.cookies;
-          await saveUserData();
-          console.log(`✅ Авторизация успешна для ${user.login}`);
-        } else {
-          throw new Error(`Ошибка авторизации: ${authResult.message}`);
-        }
-      } else {
-        console.log(`🔑 Используем сохраненные cookies для ${user.login}`);
-      }
+      // Передаем ожидаемый levelId для защиты от смены уровня
+      const expectedLevelId = user.lastKnownLevel?.levelId || null;
+      console.log(`📌 Ожидаемый уровень для ответа "${answer}": ${expectedLevelId ? `ID=${expectedLevelId}` : 'не установлен'}`);
 
-      const result = await api.sendAnswer(user.gameId, answer, user.authCookies, user.login, user.password);
+      const result = await api.sendAnswer(user.gameId, answer, user.authCookies, user.login, user.password, false, expectedLevelId);
 
       if (result.newCookies) {
         console.log('🔄 Cookies обновлены после автоматической реаутентификации');
@@ -41,6 +57,13 @@ function createAnswerService(deps) {
       }
 
       if (result.success) {
+        // Обновляем lastKnownLevel после успешной отправки
+        if (result.level) {
+          updateLastKnownLevel(user, {
+            levelId: result.level.LevelId,
+            levelNumber: result.level.Number
+          });
+        }
         console.log(`✅ Ответ "${answer}" отправлен в игру ${user.gameId}. ${result.message}`);
         return result;
       }
@@ -55,6 +78,68 @@ function createAnswerService(deps) {
   async function sendAnswerToEncounter(platform, userId, answer, progressMessageId = null, retryCount = 0) {
     const user = getUserInfo(platform, userId);
     const MAX_RETRIES = 2;
+
+    // Блокируем новые ответы, если ожидается решение по старой очереди
+    if (user.pendingQueueDecision) {
+      const decision = user.pendingQueueDecision;
+      await sendMessage(platform, userId,
+        `⚠️ Сначала решите судьбу старой очереди!\n\n` +
+        `У вас есть ${decision.queueSize} ${decision.queueSize === 1 ? 'ответ' : decision.queueSize < 5 ? 'ответа' : 'ответов'} ` +
+        `для уровня ${decision.oldLevelNumber}, а текущий уровень — ${decision.newLevelNumber}.\n\n` +
+        `Используйте кнопки под сообщением с выбором.`
+      );
+      return null;
+    }
+
+    // Блокируем новые ответы, если ожидается решение по текущему ответу
+    if (user.pendingAnswerDecision) {
+      const decision = user.pendingAnswerDecision;
+      await sendMessage(platform, userId,
+        `⚠️ Сначала решите судьбу предыдущего ответа!\n\n` +
+        `Ответ "${decision.answer}" готовился для уровня ${decision.oldLevel}, ` +
+        `но текущий уровень — ${decision.newLevel}.\n\n` +
+        `Используйте кнопки под сообщением с выбором.`
+      );
+      return null;
+    }
+
+    // Режим накопления кодов (детект оффлайн-пачки)
+    if (user.isAccumulatingAnswers) {
+      // Добавляем код в буфер накопления
+      user.accumulatedAnswers = user.accumulatedAnswers || [];
+      user.accumulatedAnswers.push({
+        answer,
+        timestamp: Date.now(),
+        levelId: user.lastKnownLevel?.levelId || null,
+        levelNumber: user.lastKnownLevel?.levelNumber || null
+      });
+
+      console.log(`📦 Накопление: добавлен код "${answer}" (всего: ${user.accumulatedAnswers.length})`);
+
+      // Сбрасываем и перезапускаем таймер завершения накопления
+      if (user.accumulationTimer) {
+        clearTimeout(user.accumulationTimer);
+        console.log(`⏱️ Таймер накопления сброшен`);
+      }
+
+      // Устанавливаем таймер на 5 секунд тишины
+      user.accumulationTimer = setTimeout(async () => {
+        console.log(`⏱️ Таймер накопления истёк - показываем кнопки`);
+        await handleAccumulationComplete(platform, userId);
+      }, 5000);
+
+      await saveUserData();
+
+      // Уведомляем пользователя
+      const accumulationNotice = `📦 Код "${answer}" добавлен в буфер (${user.accumulatedAnswers.length})`;
+      if (progressMessageId) {
+        await sendOrUpdateMessage(platform, userId, accumulationNotice, progressMessageId);
+      } else {
+        await sendMessage(platform, userId, accumulationNotice);
+      }
+
+      return null;
+    }
 
     try {
       const response = await sendToEncounterAPI(user, answer);
@@ -76,6 +161,52 @@ function createAnswerService(deps) {
       throw new Error(response.error || 'Ошибка отправки ответа');
     } catch (error) {
       console.error('Ошибка отправки ответа:', error);
+
+      // Приоритетная проверка: изменился ли уровень
+      if (error.isLevelChanged) {
+        console.log(`⚠️ ЗАЩИТА СРАБОТАЛА: Уровень изменился (${error.oldLevel} → ${error.newLevel}) для ответа "${answer}"`);
+
+        // Сохраняем данные для выбора пользователя
+        user.pendingAnswerDecision = {
+          answer: answer,
+          oldLevel: error.oldLevel,
+          newLevel: error.newLevel
+        };
+        await saveUserData();
+
+        const messageText =
+          `⚠️ Уровень изменился (${error.oldLevel} → ${error.newLevel})\n\n` +
+          `Ответ "${answer}" готовился для уровня ${error.oldLevel}, ` +
+          `но текущий уровень — ${error.newLevel}.\n\n` +
+          `Что делать?`;
+
+        // Формируем кнопки выбора (универсальный формат для Telegram и VK)
+        let options = {};
+
+        if (platform === 'telegram') {
+          options = {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: `Отправить в уровень ${error.newLevel}`, callback_data: 'answer_send' },
+                { text: 'Отменить', callback_data: 'answer_cancel' }
+              ]]
+            }
+          };
+        } else if (platform === 'vk') {
+          options = {
+            keyboard: {
+              type: 'inline',
+              buttons: [[
+                { label: `Отправить в уровень ${error.newLevel}`, payload: { action: 'answer_send' } },
+                { label: 'Отменить', payload: { action: 'answer_cancel' } }
+              ]]
+            }
+          };
+        }
+
+        await sendOrUpdateMessage(platform, userId, messageText, progressMessageId, options);
+        return null;
+      }
 
       const networkErrors = ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'network', 'timeout'];
       const isNetworkError = networkErrors.some(errType =>
@@ -102,14 +233,42 @@ function createAnswerService(deps) {
       }
 
       if (isNetworkError) {
+        // Если есть нерешённая судьба старой очереди - автоочистка
+        if (user.pendingQueueDecision) {
+          const oldQueueSize = user.answerQueue.length;
+          const decision = user.pendingQueueDecision;
+
+          console.log(`🗑️ Автоочистка старой очереди (${oldQueueSize} ответов) из-за повторной потери связи`);
+
+          user.answerQueue.length = 0; // Очищаем старую очередь
+          user.pendingQueueDecision = null;
+
+          await sendMessage(platform, userId,
+            `🗑️ Старая очередь автоматически очищена (потеря связи)\n\n` +
+            `Было ${oldQueueSize} ${oldQueueSize === 1 ? 'ответ' : oldQueueSize < 5 ? 'ответа' : 'ответов'} ` +
+            `для уровня ${decision.oldLevelNumber}.`
+          );
+        }
+
+        // Используем последний известный уровень вместо кеша
+        const lastLevel = user.lastKnownLevel;
+
         enqueueAnswer(platform, userId, {
           answer,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          levelId: lastLevel?.levelId || null,
+          levelNumber: lastLevel?.levelNumber || null
         });
         user.isOnline = false;
         await saveUserData();
 
-        await sendMessage(platform, userId, `🔄 Нет соединения. Ответ "${answer}" добавлен в очередь.`);
+        let message = `🔄 Нет соединения. Ответ "${answer}" добавлен в очередь`;
+        if (lastLevel?.levelNumber) {
+          message += ` (Уровень ${lastLevel.levelNumber})`;
+        }
+        message += '.\n⚠️ Если уровень сменится, нужно будет решить: отправить в новый уровень или очистить.';
+
+        await sendMessage(platform, userId, message);
         return null;
       }
 
@@ -171,6 +330,76 @@ function createAnswerService(deps) {
     }
   }
 
+  /**
+   * Обработка завершения режима накопления кодов
+   * Показывает пользователю список накопленных кодов и кнопки выбора
+   */
+  async function handleAccumulationComplete(platform, userId) {
+    const user = getUserInfo(platform, userId);
+
+    if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
+      console.log(`⚠️ Нет накопленных кодов для ${platform}:${userId}`);
+      user.isAccumulatingAnswers = false;
+      user.accumulationTimer = null;
+      await saveUserData();
+      return;
+    }
+
+    const totalCodes = user.accumulatedAnswers.length;
+    const startLevel = user.accumulationStartLevel;
+
+    console.log(`📋 Показываю пользователю ${totalCodes} накопленных кодов (уровень: ${startLevel?.levelNumber || '?'})`);
+
+    // Формируем список кодов (показываем до 10 штук)
+    const codesList = user.accumulatedAnswers
+      .slice(0, 10)
+      .map((item, index) => `${index + 1}. "${item.answer}"`)
+      .join('\n');
+    const moreCodesText = totalCodes > 10 ? `\n... и ещё ${totalCodes - 10}` : '';
+
+    const messageText =
+      `📦 Накоплено ${totalCodes} ${totalCodes === 1 ? 'код' : totalCodes < 5 ? 'кода' : 'кодов'}\n\n` +
+      `${codesList}${moreCodesText}\n\n` +
+      `Уровень на момент накопления: ${startLevel?.levelNumber || '?'}\n\n` +
+      `Что делать с накопленными кодами?`;
+
+    // Формируем кнопки выбора (универсальный формат для Telegram и VK)
+    let options = {};
+
+    if (platform === 'telegram') {
+      options = {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '✅ Отправить все', callback_data: 'batch_send_all' },
+              { text: '🚫 Отменить все', callback_data: 'batch_cancel_all' }
+            ],
+            [
+              { text: '📋 Список', callback_data: 'batch_list' }
+            ]
+          ]
+        }
+      };
+    } else if (platform === 'vk') {
+      options = {
+        keyboard: {
+          type: 'inline',
+          buttons: [
+            [
+              { label: '✅ Отправить все', payload: { action: 'batch_send_all' } },
+              { label: '🚫 Отменить все', payload: { action: 'batch_cancel_all' } }
+            ],
+            [
+              { label: '📋 Список', payload: { action: 'batch_list' } }
+            ]
+          ]
+        }
+      };
+    }
+
+    await sendMessage(platform, userId, messageText, options);
+  }
+
   async function processAnswerQueue(platform, userId) {
     const user = getUserInfo(platform, userId);
     const queue = getAnswerQueue(platform, userId);
@@ -186,6 +415,95 @@ function createAnswerService(deps) {
     }
 
     user.isProcessingQueue = true;
+
+    try {
+      // Проверяем актуальность уровня перед обработкой очереди
+      if (queue.length > 0 && queue[0].levelId !== undefined) {
+        console.log(`🔍 Проверка актуальности очереди (сохранён levelId: ${queue[0].levelId})`);
+
+        try {
+          // Создаем API с callback авторизации для проверки уровня
+          const authCallback = await createAuthCallback(user);
+          const api = new EncounterAPI(user.domain, authCallback);
+          const gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
+
+          if (gameState.success && gameState.data && gameState.data.Level) {
+            const currentLevelId = gameState.data.Level.LevelId;
+            const currentLevelNumber = gameState.data.Level.Number;
+            const queuedLevelId = queue[0].levelId;
+            const queuedLevelNumber = queue[0].levelNumber;
+
+            // Обновляем lastKnownLevel после успешного получения состояния игры
+            updateLastKnownLevel(user, {
+              levelId: currentLevelId,
+              levelNumber: currentLevelNumber
+            });
+
+            console.log(`🎯 Текущий уровень: ${currentLevelNumber} (ID: ${currentLevelId})`);
+            console.log(`📦 Уровень в очереди: ${queuedLevelNumber || '?'} (ID: ${queuedLevelId || 'null'})`);
+
+            // Если уровень сменился ИЛИ в очереди был null
+            if (queuedLevelId === null || currentLevelId !== queuedLevelId) {
+              console.log(`⚠️ Уровень изменился! Требуется решение пользователя.`);
+
+              // Сохраняем данные для выбора
+              user.pendingQueueDecision = {
+                oldLevelNumber: queuedLevelNumber || '?',
+                newLevelNumber: currentLevelNumber,
+                queueSize: queue.length
+              };
+              user.isProcessingQueue = false;
+              await saveUserData();
+
+              // Формируем список ответов для показа
+              const answersList = queue.slice(0, 5).map(item => `• "${item.answer}"`).join('\n');
+              const moreAnswers = queue.length > 5 ? `\n... и ещё ${queue.length - 5}` : '';
+
+              const messageText =
+                `⚠️ Уровень изменился${queuedLevelNumber ? ` (${queuedLevelNumber} → ${currentLevelNumber})` : ''}\n\n` +
+                `В очереди ${queue.length} ${queue.length === 1 ? 'ответ' : queue.length < 5 ? 'ответа' : 'ответов'}:\n${answersList}${moreAnswers}\n\n` +
+                `Что делать?`;
+
+              // Формируем кнопки выбора (универсальный формат для Telegram и VK)
+              let options = {};
+
+              if (platform === 'telegram') {
+                options = {
+                  reply_markup: {
+                    inline_keyboard: [[
+                      { text: `Отправить в уровень ${currentLevelNumber}`, callback_data: 'queue_send' },
+                      { text: 'Очистить очередь', callback_data: 'queue_clear' }
+                    ]]
+                  }
+                };
+              } else if (platform === 'vk') {
+                options = {
+                  keyboard: {
+                    type: 'inline',
+                    buttons: [[
+                      { label: `Отправить в уровень ${currentLevelNumber}`, payload: { action: 'queue_send' } },
+                      { label: 'Очистить очередь', payload: { action: 'queue_clear' } }
+                    ]]
+                  }
+                };
+              }
+
+              await sendMessage(platform, userId, messageText, options);
+
+              return;
+            }
+
+            console.log(`✅ Уровень не изменился, продолжаем обработку`);
+          }
+        } catch (error) {
+          console.error('⚠️ Ошибка проверки актуальности уровня:', error.message);
+          // Продолжаем обработку несмотря на ошибку проверки
+        }
+      }
+    } catch (error) {
+      user.isProcessingQueue = false;
+      throw error;
+    }
 
     try {
       const totalAnswers = queue.length;
@@ -396,7 +714,8 @@ function createAnswerService(deps) {
   return {
     sendToEncounterAPI,
     sendAnswerToEncounter,
-    processAnswerQueue
+    processAnswerQueue,
+    handleAccumulationComplete
   };
 }
 

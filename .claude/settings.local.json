@@ -4,7 +4,12 @@
       "Bash(node:*)",
       "Bash(npm test)",
       "Bash(npm run dev:*)",
-      "Bash(timeout 5 sleep 3)"
+      "Bash(timeout 5 sleep 3)",
+      "Bash(timeout 5 npm start:*)",
+      "Bash(pkill:*)",
+      "Bash(taskkill:*)",
+      "Bash(cat:*)",
+      "Bash(npm start)"
     ],
     "deny": [],
     "ask": []

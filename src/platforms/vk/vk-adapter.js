@@ -155,16 +155,19 @@ class VkAdapter extends PlatformAdapter {
         return next();
       }
 
+      const rawPayload = context.eventPayload ?? context.payload ?? null;
+
       const event = {
         platform: this.name,
         rawUserId: context.peerId,
         type: PlatformEventType.CALLBACK,
         text: '',
-        payload: context.payload,
+        payload: this._safeParsePayload(rawPayload),
         meta: {
           peerId: context.peerId,
           userId: context.userId,
           eventId: context.eventId,
+          conversationMessageId: context.conversationMessageId ?? null,
           raw: context
         },
         isGroup: context.peerType !== 'user'
@@ -224,26 +227,26 @@ class VkAdapter extends PlatformAdapter {
 
     if (keyboard.type === 'inline') {
       const builder = Keyboard.builder().inline();
-      this._fillBuilderWithButtons(builder, keyboard.buttons || []);
+      this._fillBuilderWithButtons(builder, keyboard.buttons || [], true); // true = inline mode
       return builder;
     }
 
     if (keyboard.type === 'reply') {
       const builder = Keyboard.builder().oneTime(Boolean(keyboard.oneTime));
-      this._fillBuilderWithButtons(builder, keyboard.buttons || []);
+      this._fillBuilderWithButtons(builder, keyboard.buttons || [], false); // false = reply mode
       return builder;
     }
 
     if (Array.isArray(keyboard)) {
       const builder = Keyboard.builder();
-      this._fillBuilderWithButtons(builder, keyboard);
+      this._fillBuilderWithButtons(builder, keyboard, false);
       return builder;
     }
 
     return keyboard;
   }
 
-  _fillBuilderWithButtons(builder, buttonsMatrix) {
+  _fillBuilderWithButtons(builder, buttonsMatrix, isInline = false) {
     if (!builder || !Array.isArray(buttonsMatrix)) {
       return;
     }
@@ -275,11 +278,20 @@ class VkAdapter extends PlatformAdapter {
 
         const color = this._mapButtonColor(button.color);
 
-        builder.textButton({
-          label,
-          payload: payload || undefined,
-          color
-        });
+        // Для inline клавиатур используем callbackButton, для обычных - textButton
+        if (isInline) {
+          builder.callbackButton({
+            label,
+            payload: payload || undefined,
+            color
+          });
+        } else {
+          builder.textButton({
+            label,
+            payload: payload || undefined,
+            color
+          });
+        }
       });
 
       if (rowIndex < buttonsMatrix.length - 1) {
