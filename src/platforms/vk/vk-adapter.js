@@ -2,6 +2,7 @@
 
 const { VK, Keyboard } = require('vk-io');
 const { PlatformAdapter, PlatformEventType, OutboundMessageType } = require('../platform-adapter');
+const { logger } = require('../../infra/logger');
 
 class VkAdapter extends PlatformAdapter {
   /**
@@ -12,12 +13,7 @@ class VkAdapter extends PlatformAdapter {
    * @param {Object} [options.pollingOptions] - Настройки long poll
    */
   constructor(options = {}) {
-    const {
-      token,
-      groupId,
-      apiVersion = '5.199',
-      pollingOptions = {}
-    } = options;
+    const { token, groupId, apiVersion = '5.199', pollingOptions = {} } = options;
 
     super({ name: 'vk', displayName: 'VK' });
 
@@ -50,7 +46,7 @@ class VkAdapter extends PlatformAdapter {
     }
     this._isRunning = true;
     await this.updates.startPolling();
-    console.log('[vk] Long Poll запущен');
+    logger.info('[vk] Long Poll запущен');
   }
 
   async stop() {
@@ -59,7 +55,7 @@ class VkAdapter extends PlatformAdapter {
     }
     this._isRunning = false;
     await this.updates.stopPolling();
-    console.log('[vk] Long Poll остановлен');
+    logger.info('[vk] Long Poll остановлен');
   }
 
   async sendMessage(context, message) {
@@ -117,7 +113,9 @@ class VkAdapter extends PlatformAdapter {
 
       const text = context.text || '';
       const isCommand = text.trim().startsWith('/');
-      const payload = context.messagePayload ? this._safeParsePayload(context.messagePayload) : null;
+      const payload = context.messagePayload
+        ? this._safeParsePayload(context.messagePayload)
+        : null;
       const peerId = context.peerId ?? context.senderId ?? null;
 
       const event = {
@@ -215,9 +213,12 @@ class VkAdapter extends PlatformAdapter {
   }
 
   _buildKeyboard(keyboard) {
-    if (keyboard && typeof keyboard === 'object' &&
+    if (
+      keyboard &&
+      typeof keyboard === 'object' &&
       typeof keyboard.toString === 'function' &&
-      typeof keyboard.toJSON === 'function') {
+      typeof keyboard.toJSON === 'function'
+    ) {
       return keyboard;
     }
 
@@ -256,7 +257,7 @@ class VkAdapter extends PlatformAdapter {
         return;
       }
 
-      row.forEach((button) => {
+      row.forEach(button => {
         if (!button) {
           return;
         }
@@ -321,7 +322,7 @@ class VkAdapter extends PlatformAdapter {
     } catch (error) {
       if (this._isKeyboardUnsupportedError(error) && payload.keyboard) {
         const { keyboard, ...rest } = payload;
-        console.warn('[vk] Keyboard unsupported for peer, retrying without keyboard');
+        logger.warn('[vk] Keyboard unsupported for peer, retrying without keyboard');
         return this.vk.api.messages.send(rest);
       }
       throw error;
@@ -334,7 +335,7 @@ class VkAdapter extends PlatformAdapter {
     } catch (error) {
       if (this._isKeyboardUnsupportedError(error) && payload.keyboard) {
         const { keyboard, ...rest } = payload;
-        console.warn('[vk] Keyboard unsupported for peer on edit, retrying without keyboard');
+        logger.warn('[vk] Keyboard unsupported for peer on edit, retrying without keyboard');
         return this.vk.api.messages.edit(rest);
       }
       throw error;

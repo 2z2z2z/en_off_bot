@@ -36,21 +36,26 @@
 ## Important Implementation Details
 
 ### Cookie Management
+
 - Cookies обновляются автоматически (см. `encounter-api.js::sendAnswer`).
 - Проверяйте `result.newCookies` и сохраняйте их (уже реализовано в `answer-service`).
 
 ### Error Handling
+
 - Сетевые ошибки переводят пользователя в офлайн-очередь.
 - При смене уровня создаётся `pendingAnswerDecision` / `pendingQueueDecision` с кнопками «Отправить / Отменить».
 - Каждая попытка обрабатывается с экспоненциальным backoff (см. `answer-service`).
 
 ### Game State Events
+
 См. `encounter-api.js`, `resolveEvent()` — там собраны коды Encounter API (0 — активен, 16 — смена уровня и т.д.).
 
 ### URL Parsing
+
 Парсер (`parseGameUrl`) принимает `GameDetails.aspx?gid=` и `gameengines/encounter/play/`.
 
 ### Queue Processing
+
 Очередь (`processAnswerQueue`) и буфер накопления (`handleAccumulationComplete`) лежат в `answer-service`. Хендлеры callback’ов см. в `index.js`.
 
 ## Configuration
@@ -92,6 +97,7 @@ You carefully provide accurate, factual, thoughtful answers, and are a genius at
 ### **IMPORTANT!** Basic principles of implementation
 
 The implementation must strictly adhere to these non-negotiable principles:
+
 - YAGNI (You Aren't Gonna Need It)
 - KISS (Keep It Simple, Stupid)
 - DRY (Don't Repeat Yourself)

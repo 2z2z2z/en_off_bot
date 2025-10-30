@@ -9,7 +9,11 @@
       "Bash(pkill:*)",
       "Bash(taskkill:*)",
       "Bash(cat:*)",
-      "Bash(npm start)"
+      "Bash(npm start)",
+      "Bash(npm run lint:*)",
+      "Bash(npm test:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm run format:*)"
     ],
     "deny": [],
     "ask": []

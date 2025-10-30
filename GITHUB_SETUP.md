@@ -60,6 +60,7 @@ git push -u origin main
 #### 📝 Настройка Description
 
 В настройках репозитория добавьте:
+
 - **Description**: `🤖 Telegram бот для Encounter с offline поддержкой`
 - **Website**: ссылка на Encounter (опционально)
 - **Topics**: `telegram-bot`, `encounter`, `nodejs`, `offline-support`
@@ -98,5 +99,5 @@ git push -u origin main
 ## 🔗 Полезные ссылки
 
 - [GitHub Desktop](https://desktop.github.com/) - графический интерфейс для Git
-- [Git командная строка](https://git-scm.com/downloads) - консольная версия Git  
+- [Git командная строка](https://git-scm.com/downloads) - консольная версия Git
 - [Документация GitHub](https://docs.github.com/) - официальная документация

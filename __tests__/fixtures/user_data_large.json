@@ -1,0 +1,6328 @@
+{
+  "telegram::tg000001": {
+    "platform": "telegram",
+    "userId": "tg000001",
+    "login": "telegram_user_1",
+    "password": "enc:v1:dummy:1:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50001",
+    "authCookies": {
+      "GUID": "guid-1",
+      "stoken": "stoken-1",
+      "atoken": "atoken-1"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100001,
+      "levelNumber": 2,
+      "timestamp": 1761846965664
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1761760999963,
+    "updatedAt": 1761843799963
+  },
+  "telegram::tg000002": {
+    "platform": "telegram",
+    "userId": "tg000002",
+    "login": "telegram_user_2",
+    "password": "enc:v1:dummy:2:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50002",
+    "authCookies": {
+      "GUID": "guid-2",
+      "stoken": "stoken-2",
+      "atoken": "atoken-2"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100002,
+      "levelNumber": 3,
+      "timestamp": 1761846969115
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1761674599963,
+    "updatedAt": 1761840199963
+  },
+  "vk::vk000003": {
+    "platform": "vk",
+    "userId": "vk000003",
+    "login": "vk_user_3",
+    "password": "enc:v1:dummy:3:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50003",
+    "authCookies": {
+      "GUID": "guid-3",
+      "stoken": "stoken-3",
+      "atoken": "atoken-3"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100003,
+      "levelNumber": 4,
+      "timestamp": 1761847278512
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1761588199963,
+    "updatedAt": 1761836599963
+  },
+  "telegram::tg000004": {
+    "platform": "telegram",
+    "userId": "tg000004",
+    "login": "telegram_user_4",
+    "password": "enc:v1:dummy:4:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50004",
+    "authCookies": {
+      "GUID": "guid-4",
+      "stoken": "stoken-4",
+      "atoken": "atoken-4"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100004,
+      "levelNumber": 5,
+      "timestamp": 1761847335212
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": false,
+    "createdAt": 1761501799963,
+    "updatedAt": 1761832999963
+  },
+  "telegram::tg000005": {
+    "platform": "telegram",
+    "userId": "tg000005",
+    "login": "telegram_user_5",
+    "password": "enc:v1:dummy:5:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50005",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100005,
+      "levelNumber": 6,
+      "timestamp": 1761846886708
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1761415399963,
+    "updatedAt": 1761829399963
+  },
+  "vk::vk000006": {
+    "platform": "vk",
+    "userId": "vk000006",
+    "login": "vk_user_6",
+    "password": "enc:v1:dummy:6:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50006",
+    "authCookies": {
+      "GUID": "guid-6",
+      "stoken": "stoken-6",
+      "atoken": "atoken-6"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100006,
+      "levelNumber": 7,
+      "timestamp": 1761846946165
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1761328999963,
+    "updatedAt": 1761825799963
+  },
+  "telegram::tg000007": {
+    "platform": "telegram",
+    "userId": "tg000007",
+    "login": "telegram_user_7",
+    "password": "enc:v1:dummy:7:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50007",
+    "authCookies": {
+      "GUID": "guid-7",
+      "stoken": "stoken-7",
+      "atoken": "atoken-7"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-7-1",
+        "timestamp": 1761847399963,
+        "levelId": 100007,
+        "levelNumber": 8,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-7-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-7-3",
+        "timestamp": 1761847279963,
+        "levelId": 100007,
+        "levelNumber": 8
+      },
+      {
+        "answer": "queue-7-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-7-5",
+        "timestamp": 1761847159963,
+        "levelId": 100007,
+        "levelNumber": 8
+      },
+      {
+        "answer": "queue-7-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-7-7",
+        "timestamp": 1761847039963,
+        "levelId": 100007,
+        "levelNumber": 8,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-7-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-7-9",
+        "timestamp": 1761846919963,
+        "levelId": 100007,
+        "levelNumber": 8
+      },
+      {
+        "answer": "queue-7-10",
+        "timestamp": 1761846859963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-7-11",
+        "timestamp": 1761846799963,
+        "levelId": 100007,
+        "levelNumber": 8
+      },
+      {
+        "answer": "queue-7-12",
+        "timestamp": 1761846739963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100007,
+      "levelNumber": 8,
+      "timestamp": 1761847325035
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1761242599963,
+    "updatedAt": 1761822199963
+  },
+  "telegram::tg000008": {
+    "platform": "telegram",
+    "userId": "tg000008",
+    "login": "telegram_user_8",
+    "password": "enc:v1:dummy:8:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50008",
+    "authCookies": {
+      "GUID": "guid-8",
+      "stoken": "stoken-8",
+      "atoken": "atoken-8"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100008,
+      "levelNumber": 9,
+      "timestamp": 1761846972296
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": false,
+    "createdAt": 1761156199963,
+    "updatedAt": 1761818599963
+  },
+  "vk::vk000009": {
+    "platform": "vk",
+    "userId": "vk000009",
+    "login": "vk_user_9",
+    "password": "enc:v1:dummy:9:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50009",
+    "authCookies": {
+      "GUID": "guid-9",
+      "stoken": "stoken-9",
+      "atoken": "atoken-9"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-9-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-9-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-9-3",
+        "timestamp": 1761847309963
+      },
+      {
+        "answer": "acc-9-4",
+        "timestamp": 1761847264963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100009,
+      "levelNumber": 10,
+      "timestamp": 1761846852487
+    },
+    "accumulationStartLevel": {
+      "levelId": 100009,
+      "levelNumber": 10
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1761069799963,
+    "updatedAt": 1761814999963
+  },
+  "telegram::tg000010": {
+    "platform": "telegram",
+    "userId": "tg000010",
+    "login": "telegram_user_10",
+    "password": "enc:v1:dummy:10:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50010",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-10-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-10-1"
+      },
+      {
+        "answer": "burst-10-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-10-2"
+      },
+      {
+        "answer": "burst-10-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-10-3"
+      },
+      {
+        "answer": "burst-10-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-10-4"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100010,
+      "levelNumber": 11,
+      "timestamp": 1761846812227
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1760983399963,
+    "updatedAt": 1761811399963
+  },
+  "telegram::tg000011": {
+    "platform": "telegram",
+    "userId": "tg000011",
+    "login": "telegram_user_11",
+    "password": "enc:v1:dummy:11:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50011",
+    "authCookies": {
+      "GUID": "guid-11",
+      "stoken": "stoken-11",
+      "atoken": "atoken-11"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100011,
+      "levelNumber": 12,
+      "timestamp": 1761847338033
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1760896999963,
+    "updatedAt": 1761807799963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 12,
+      "newLevelNumber": 13,
+      "queueSize": 5
+    }
+  },
+  "vk::vk000012": {
+    "platform": "vk",
+    "userId": "vk000012",
+    "login": "vk_user_12",
+    "password": "enc:v1:dummy:12:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50012",
+    "authCookies": {
+      "GUID": "guid-12",
+      "stoken": "stoken-12",
+      "atoken": "atoken-12"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100012,
+      "levelNumber": 13,
+      "timestamp": 1761846975209
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": false,
+    "createdAt": 1760810599963,
+    "updatedAt": 1761804199963
+  },
+  "telegram::tg000013": {
+    "platform": "telegram",
+    "userId": "tg000013",
+    "login": "telegram_user_13",
+    "password": "enc:v1:dummy:13:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50013",
+    "authCookies": {
+      "GUID": "guid-13",
+      "stoken": "stoken-13",
+      "atoken": "atoken-13"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100013,
+      "levelNumber": 14,
+      "timestamp": 1761847162357
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1760724199963,
+    "updatedAt": 1761800599963,
+    "pendingAnswerDecision": {
+      "answer": "pending-13",
+      "oldLevel": 14,
+      "newLevel": 15
+    }
+  },
+  "telegram::tg000014": {
+    "platform": "telegram",
+    "userId": "tg000014",
+    "login": "telegram_user_14",
+    "password": "enc:v1:dummy:14:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50014",
+    "authCookies": {
+      "GUID": "guid-14",
+      "stoken": "stoken-14",
+      "atoken": "atoken-14"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-14-1",
+        "timestamp": 1761847399963,
+        "levelId": 100014,
+        "levelNumber": 15,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-14-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-14-3",
+        "timestamp": 1761847279963,
+        "levelId": 100014,
+        "levelNumber": 15
+      },
+      {
+        "answer": "queue-14-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-14-5",
+        "timestamp": 1761847159963,
+        "levelId": 100014,
+        "levelNumber": 15
+      },
+      {
+        "answer": "queue-14-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-14-7",
+        "timestamp": 1761847039963,
+        "levelId": 100014,
+        "levelNumber": 15,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-14-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-14-9",
+        "timestamp": 1761846919963,
+        "levelId": 100014,
+        "levelNumber": 15
+      },
+      {
+        "answer": "queue-14-10",
+        "timestamp": 1761846859963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-14-11",
+        "timestamp": 1761846799963,
+        "levelId": 100014,
+        "levelNumber": 15
+      },
+      {
+        "answer": "queue-14-12",
+        "timestamp": 1761846739963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100014,
+      "levelNumber": 15,
+      "timestamp": 1761846911131
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1760637799963,
+    "updatedAt": 1761796999963
+  },
+  "vk::vk000015": {
+    "platform": "vk",
+    "userId": "vk000015",
+    "login": "vk_user_15",
+    "password": "enc:v1:dummy:15:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50015",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100015,
+      "levelNumber": 16,
+      "timestamp": 1761846903735
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1760551399963,
+    "updatedAt": 1761793399963
+  },
+  "telegram::tg000016": {
+    "platform": "telegram",
+    "userId": "tg000016",
+    "login": "telegram_user_16",
+    "password": "enc:v1:dummy:16:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50016",
+    "authCookies": {
+      "GUID": "guid-16",
+      "stoken": "stoken-16",
+      "atoken": "atoken-16"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100016,
+      "levelNumber": 17,
+      "timestamp": 1761847160103
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": false,
+    "createdAt": 1760464999963,
+    "updatedAt": 1761789799963
+  },
+  "telegram::tg000017": {
+    "platform": "telegram",
+    "userId": "tg000017",
+    "login": "telegram_user_17",
+    "password": "enc:v1:dummy:17:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50017",
+    "authCookies": {
+      "GUID": "guid-17",
+      "stoken": "stoken-17",
+      "atoken": "atoken-17"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100017,
+      "levelNumber": 18,
+      "timestamp": 1761846904560
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1760378599963,
+    "updatedAt": 1761786199963
+  },
+  "vk::vk000018": {
+    "platform": "vk",
+    "userId": "vk000018",
+    "login": "vk_user_18",
+    "password": "enc:v1:dummy:18:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50018",
+    "authCookies": {
+      "GUID": "guid-18",
+      "stoken": "stoken-18",
+      "atoken": "atoken-18"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-18-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-18-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-18-3",
+        "timestamp": 1761847309963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100018,
+      "levelNumber": 19,
+      "timestamp": 1761847033161
+    },
+    "accumulationStartLevel": {
+      "levelId": 100018,
+      "levelNumber": 19
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1760292199963,
+    "updatedAt": 1761782599963
+  },
+  "telegram::tg000019": {
+    "platform": "telegram",
+    "userId": "tg000019",
+    "login": "telegram_user_19",
+    "password": "enc:v1:dummy:19:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50019",
+    "authCookies": {
+      "GUID": "guid-19",
+      "stoken": "stoken-19",
+      "atoken": "atoken-19"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100019,
+      "levelNumber": 20,
+      "timestamp": 1761846837653
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1760205799963,
+    "updatedAt": 1761778999963
+  },
+  "telegram::tg000020": {
+    "platform": "telegram",
+    "userId": "tg000020",
+    "login": "telegram_user_20",
+    "password": "enc:v1:dummy:20:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50020",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-20-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-20-1"
+      },
+      {
+        "answer": "burst-20-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-20-2"
+      },
+      {
+        "answer": "burst-20-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-20-3"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100020,
+      "levelNumber": 21,
+      "timestamp": 1761847267593
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": false,
+    "createdAt": 1760119399963,
+    "updatedAt": 1761775399963
+  },
+  "vk::vk000021": {
+    "platform": "vk",
+    "userId": "vk000021",
+    "login": "vk_user_21",
+    "password": "enc:v1:dummy:21:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50021",
+    "authCookies": {
+      "GUID": "guid-21",
+      "stoken": "stoken-21",
+      "atoken": "atoken-21"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-21-1",
+        "timestamp": 1761847399963,
+        "levelId": 100021,
+        "levelNumber": 22,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-21-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-21-3",
+        "timestamp": 1761847279963,
+        "levelId": 100021,
+        "levelNumber": 22
+      },
+      {
+        "answer": "queue-21-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-21-5",
+        "timestamp": 1761847159963,
+        "levelId": 100021,
+        "levelNumber": 22
+      },
+      {
+        "answer": "queue-21-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100021,
+      "levelNumber": 22,
+      "timestamp": 1761846811584
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1760032999963,
+    "updatedAt": 1761771799963
+  },
+  "telegram::tg000022": {
+    "platform": "telegram",
+    "userId": "tg000022",
+    "login": "telegram_user_22",
+    "password": "enc:v1:dummy:22:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50022",
+    "authCookies": {
+      "GUID": "guid-22",
+      "stoken": "stoken-22",
+      "atoken": "atoken-22"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100022,
+      "levelNumber": 23,
+      "timestamp": 1761847216500
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1759946599963,
+    "updatedAt": 1761768199963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 23,
+      "newLevelNumber": 24,
+      "queueSize": 8
+    }
+  },
+  "telegram::tg000023": {
+    "platform": "telegram",
+    "userId": "tg000023",
+    "login": "telegram_user_23",
+    "password": "enc:v1:dummy:23:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50023",
+    "authCookies": {
+      "GUID": "guid-23",
+      "stoken": "stoken-23",
+      "atoken": "atoken-23"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100023,
+      "levelNumber": 24,
+      "timestamp": 1761847048954
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1759860199963,
+    "updatedAt": 1761764599963
+  },
+  "vk::vk000024": {
+    "platform": "vk",
+    "userId": "vk000024",
+    "login": "vk_user_24",
+    "password": "enc:v1:dummy:24:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50024",
+    "authCookies": {
+      "GUID": "guid-24",
+      "stoken": "stoken-24",
+      "atoken": "atoken-24"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100024,
+      "levelNumber": 25,
+      "timestamp": 1761847189370
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": false,
+    "createdAt": 1759773799963,
+    "updatedAt": 1761760999963
+  },
+  "telegram::tg000025": {
+    "platform": "telegram",
+    "userId": "tg000025",
+    "login": "telegram_user_25",
+    "password": "enc:v1:dummy:25:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50025",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100025,
+      "levelNumber": 26,
+      "timestamp": 1761847075057
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1759687399963,
+    "updatedAt": 1761757399963
+  },
+  "telegram::tg000026": {
+    "platform": "telegram",
+    "userId": "tg000026",
+    "login": "telegram_user_26",
+    "password": "enc:v1:dummy:26:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50026",
+    "authCookies": {
+      "GUID": "guid-26",
+      "stoken": "stoken-26",
+      "atoken": "atoken-26"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100026,
+      "levelNumber": 27,
+      "timestamp": 1761847196548
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1759600999963,
+    "updatedAt": 1761753799963,
+    "pendingAnswerDecision": {
+      "answer": "pending-26",
+      "oldLevel": 27,
+      "newLevel": 28
+    }
+  },
+  "vk::vk000027": {
+    "platform": "vk",
+    "userId": "vk000027",
+    "login": "vk_user_27",
+    "password": "enc:v1:dummy:27:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50027",
+    "authCookies": {
+      "GUID": "guid-27",
+      "stoken": "stoken-27",
+      "atoken": "atoken-27"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-27-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-27-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-27-3",
+        "timestamp": 1761847309963
+      },
+      {
+        "answer": "acc-27-4",
+        "timestamp": 1761847264963
+      },
+      {
+        "answer": "acc-27-5",
+        "timestamp": 1761847219963
+      },
+      {
+        "answer": "acc-27-6",
+        "timestamp": 1761847174963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100027,
+      "levelNumber": 28,
+      "timestamp": 1761846827176
+    },
+    "accumulationStartLevel": {
+      "levelId": 100027,
+      "levelNumber": 28
+    },
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1759514599963,
+    "updatedAt": 1761750199963
+  },
+  "telegram::tg000028": {
+    "platform": "telegram",
+    "userId": "tg000028",
+    "login": "telegram_user_28",
+    "password": "enc:v1:dummy:28:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50028",
+    "authCookies": {
+      "GUID": "guid-28",
+      "stoken": "stoken-28",
+      "atoken": "atoken-28"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-28-1",
+        "timestamp": 1761847399963,
+        "levelId": 100028,
+        "levelNumber": 29,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-28-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-28-3",
+        "timestamp": 1761847279963,
+        "levelId": 100028,
+        "levelNumber": 29
+      },
+      {
+        "answer": "queue-28-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-28-5",
+        "timestamp": 1761847159963,
+        "levelId": 100028,
+        "levelNumber": 29
+      },
+      {
+        "answer": "queue-28-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-28-7",
+        "timestamp": 1761847039963,
+        "levelId": 100028,
+        "levelNumber": 29,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-28-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100028,
+      "levelNumber": 29,
+      "timestamp": 1761847234589
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": false,
+    "createdAt": 1759428199963,
+    "updatedAt": 1761746599963
+  },
+  "telegram::tg000029": {
+    "platform": "telegram",
+    "userId": "tg000029",
+    "login": "telegram_user_29",
+    "password": "enc:v1:dummy:29:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50029",
+    "authCookies": {
+      "GUID": "guid-29",
+      "stoken": "stoken-29",
+      "atoken": "atoken-29"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100029,
+      "levelNumber": 30,
+      "timestamp": 1761847232161
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1759341799963,
+    "updatedAt": 1761742999963
+  },
+  "vk::vk000030": {
+    "platform": "vk",
+    "userId": "vk000030",
+    "login": "vk_user_30",
+    "password": "enc:v1:dummy:30:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50030",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-30-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-30-1"
+      },
+      {
+        "answer": "burst-30-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-30-2"
+      },
+      {
+        "answer": "burst-30-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-30-3"
+      },
+      {
+        "answer": "burst-30-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-30-4"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100030,
+      "levelNumber": 31,
+      "timestamp": 1761847119990
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1759255399963,
+    "updatedAt": 1761739399963
+  },
+  "telegram::tg000031": {
+    "platform": "telegram",
+    "userId": "tg000031",
+    "login": "telegram_user_31",
+    "password": "enc:v1:dummy:31:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50031",
+    "authCookies": {
+      "GUID": "guid-31",
+      "stoken": "stoken-31",
+      "atoken": "atoken-31"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100031,
+      "levelNumber": 32,
+      "timestamp": 1761846982030
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1759168999963,
+    "updatedAt": 1761735799963
+  },
+  "telegram::tg000032": {
+    "platform": "telegram",
+    "userId": "tg000032",
+    "login": "telegram_user_32",
+    "password": "enc:v1:dummy:32:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50032",
+    "authCookies": {
+      "GUID": "guid-32",
+      "stoken": "stoken-32",
+      "atoken": "atoken-32"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100032,
+      "levelNumber": 33,
+      "timestamp": 1761846840759
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": false,
+    "createdAt": 1759082599963,
+    "updatedAt": 1761732199963
+  },
+  "vk::vk000033": {
+    "platform": "vk",
+    "userId": "vk000033",
+    "login": "vk_user_33",
+    "password": "enc:v1:dummy:33:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50033",
+    "authCookies": {
+      "GUID": "guid-33",
+      "stoken": "stoken-33",
+      "atoken": "atoken-33"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100033,
+      "levelNumber": 34,
+      "timestamp": 1761846998638
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1758996199963,
+    "updatedAt": 1761728599963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 34,
+      "newLevelNumber": 35,
+      "queueSize": 8
+    }
+  },
+  "telegram::tg000034": {
+    "platform": "telegram",
+    "userId": "tg000034",
+    "login": "telegram_user_34",
+    "password": "enc:v1:dummy:34:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50034",
+    "authCookies": {
+      "GUID": "guid-34",
+      "stoken": "stoken-34",
+      "atoken": "atoken-34"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100034,
+      "levelNumber": 35,
+      "timestamp": 1761847334700
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1758909799963,
+    "updatedAt": 1761724999963
+  },
+  "telegram::tg000035": {
+    "platform": "telegram",
+    "userId": "tg000035",
+    "login": "telegram_user_35",
+    "password": "enc:v1:dummy:35:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50035",
+    "authCookies": {},
+    "answerQueue": [
+      {
+        "answer": "queue-35-1",
+        "timestamp": 1761847399963,
+        "levelId": 100035,
+        "levelNumber": 36,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-35-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-35-3",
+        "timestamp": 1761847279963,
+        "levelId": 100035,
+        "levelNumber": 36
+      },
+      {
+        "answer": "queue-35-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-35-5",
+        "timestamp": 1761847159963,
+        "levelId": 100035,
+        "levelNumber": 36
+      },
+      {
+        "answer": "queue-35-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-35-7",
+        "timestamp": 1761847039963,
+        "levelId": 100035,
+        "levelNumber": 36,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-35-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-35-9",
+        "timestamp": 1761846919963,
+        "levelId": 100035,
+        "levelNumber": 36
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100035,
+      "levelNumber": 36,
+      "timestamp": 1761847148870
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1758823399963,
+    "updatedAt": 1761721399963
+  },
+  "vk::vk000036": {
+    "platform": "vk",
+    "userId": "vk000036",
+    "login": "vk_user_36",
+    "password": "enc:v1:dummy:36:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50036",
+    "authCookies": {
+      "GUID": "guid-36",
+      "stoken": "stoken-36",
+      "atoken": "atoken-36"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-36-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-36-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-36-3",
+        "timestamp": 1761847309963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100036,
+      "levelNumber": 37,
+      "timestamp": 1761847061955
+    },
+    "accumulationStartLevel": {
+      "levelId": 100036,
+      "levelNumber": 37
+    },
+    "recentMessageTimestamps": [],
+    "isOnline": false,
+    "createdAt": 1758736999963,
+    "updatedAt": 1761717799963
+  },
+  "telegram::tg000037": {
+    "platform": "telegram",
+    "userId": "tg000037",
+    "login": "telegram_user_37",
+    "password": "enc:v1:dummy:37:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50037",
+    "authCookies": {
+      "GUID": "guid-37",
+      "stoken": "stoken-37",
+      "atoken": "atoken-37"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100037,
+      "levelNumber": 38,
+      "timestamp": 1761846920069
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1758650599963,
+    "updatedAt": 1761714199963
+  },
+  "telegram::tg000038": {
+    "platform": "telegram",
+    "userId": "tg000038",
+    "login": "telegram_user_38",
+    "password": "enc:v1:dummy:38:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50038",
+    "authCookies": {
+      "GUID": "guid-38",
+      "stoken": "stoken-38",
+      "atoken": "atoken-38"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100038,
+      "levelNumber": 39,
+      "timestamp": 1761847146068
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1758564199963,
+    "updatedAt": 1761710599963
+  },
+  "vk::vk000039": {
+    "platform": "vk",
+    "userId": "vk000039",
+    "login": "vk_user_39",
+    "password": "enc:v1:dummy:39:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50039",
+    "authCookies": {
+      "GUID": "guid-39",
+      "stoken": "stoken-39",
+      "atoken": "atoken-39"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100039,
+      "levelNumber": 40,
+      "timestamp": 1761846802681
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1758477799963,
+    "updatedAt": 1761706999963,
+    "pendingAnswerDecision": {
+      "answer": "pending-39",
+      "oldLevel": 40,
+      "newLevel": 41
+    }
+  },
+  "telegram::tg000040": {
+    "platform": "telegram",
+    "userId": "tg000040",
+    "login": "telegram_user_40",
+    "password": "enc:v1:dummy:40:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50040",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-40-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-40-1"
+      },
+      {
+        "answer": "burst-40-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-40-2"
+      },
+      {
+        "answer": "burst-40-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-40-3"
+      },
+      {
+        "answer": "burst-40-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-40-4"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100040,
+      "levelNumber": 41,
+      "timestamp": 1761847237994
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": false,
+    "createdAt": 1758391399963,
+    "updatedAt": 1761703399963
+  },
+  "telegram::tg000041": {
+    "platform": "telegram",
+    "userId": "tg000041",
+    "login": "telegram_user_41",
+    "password": "enc:v1:dummy:41:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50041",
+    "authCookies": {
+      "GUID": "guid-41",
+      "stoken": "stoken-41",
+      "atoken": "atoken-41"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100041,
+      "levelNumber": 42,
+      "timestamp": 1761847049560
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1758304999963,
+    "updatedAt": 1761699799963
+  },
+  "vk::vk000042": {
+    "platform": "vk",
+    "userId": "vk000042",
+    "login": "vk_user_42",
+    "password": "enc:v1:dummy:42:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50042",
+    "authCookies": {
+      "GUID": "guid-42",
+      "stoken": "stoken-42",
+      "atoken": "atoken-42"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-42-1",
+        "timestamp": 1761847399963,
+        "levelId": 100042,
+        "levelNumber": 43,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-42-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-42-3",
+        "timestamp": 1761847279963,
+        "levelId": 100042,
+        "levelNumber": 43
+      },
+      {
+        "answer": "queue-42-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-42-5",
+        "timestamp": 1761847159963,
+        "levelId": 100042,
+        "levelNumber": 43
+      },
+      {
+        "answer": "queue-42-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-42-7",
+        "timestamp": 1761847039963,
+        "levelId": 100042,
+        "levelNumber": 43,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-42-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-42-9",
+        "timestamp": 1761846919963,
+        "levelId": 100042,
+        "levelNumber": 43
+      },
+      {
+        "answer": "queue-42-10",
+        "timestamp": 1761846859963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-42-11",
+        "timestamp": 1761846799963,
+        "levelId": 100042,
+        "levelNumber": 43
+      },
+      {
+        "answer": "queue-42-12",
+        "timestamp": 1761846739963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100042,
+      "levelNumber": 43,
+      "timestamp": 1761847115836
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1758218599963,
+    "updatedAt": 1761696199963
+  },
+  "telegram::tg000043": {
+    "platform": "telegram",
+    "userId": "tg000043",
+    "login": "telegram_user_43",
+    "password": "enc:v1:dummy:43:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50043",
+    "authCookies": {
+      "GUID": "guid-43",
+      "stoken": "stoken-43",
+      "atoken": "atoken-43"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100043,
+      "levelNumber": 44,
+      "timestamp": 1761847186523
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1758132199963,
+    "updatedAt": 1761692599963
+  },
+  "telegram::tg000044": {
+    "platform": "telegram",
+    "userId": "tg000044",
+    "login": "telegram_user_44",
+    "password": "enc:v1:dummy:44:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50044",
+    "authCookies": {
+      "GUID": "guid-44",
+      "stoken": "stoken-44",
+      "atoken": "atoken-44"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100044,
+      "levelNumber": 45,
+      "timestamp": 1761846838029
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": false,
+    "createdAt": 1758045799963,
+    "updatedAt": 1761688999963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 45,
+      "newLevelNumber": 46,
+      "queueSize": 4
+    }
+  },
+  "vk::vk000045": {
+    "platform": "vk",
+    "userId": "vk000045",
+    "login": "vk_user_45",
+    "password": "enc:v1:dummy:45:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50045",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-45-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-45-2",
+        "timestamp": 1761847354963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100045,
+      "levelNumber": 46,
+      "timestamp": 1761847067381
+    },
+    "accumulationStartLevel": {
+      "levelId": 100045,
+      "levelNumber": 46
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1757959399963,
+    "updatedAt": 1761685399963
+  },
+  "telegram::tg000046": {
+    "platform": "telegram",
+    "userId": "tg000046",
+    "login": "telegram_user_46",
+    "password": "enc:v1:dummy:46:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50046",
+    "authCookies": {
+      "GUID": "guid-46",
+      "stoken": "stoken-46",
+      "atoken": "atoken-46"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100046,
+      "levelNumber": 47,
+      "timestamp": 1761847320638
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1757872999963,
+    "updatedAt": 1761681799963
+  },
+  "telegram::tg000047": {
+    "platform": "telegram",
+    "userId": "tg000047",
+    "login": "telegram_user_47",
+    "password": "enc:v1:dummy:47:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50047",
+    "authCookies": {
+      "GUID": "guid-47",
+      "stoken": "stoken-47",
+      "atoken": "atoken-47"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100047,
+      "levelNumber": 48,
+      "timestamp": 1761846867800
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1757786599963,
+    "updatedAt": 1761678199963
+  },
+  "vk::vk000048": {
+    "platform": "vk",
+    "userId": "vk000048",
+    "login": "vk_user_48",
+    "password": "enc:v1:dummy:48:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50048",
+    "authCookies": {
+      "GUID": "guid-48",
+      "stoken": "stoken-48",
+      "atoken": "atoken-48"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100048,
+      "levelNumber": 49,
+      "timestamp": 1761847183813
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": false,
+    "createdAt": 1757700199963,
+    "updatedAt": 1761674599963
+  },
+  "telegram::tg000049": {
+    "platform": "telegram",
+    "userId": "tg000049",
+    "login": "telegram_user_49",
+    "password": "enc:v1:dummy:49:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50049",
+    "authCookies": {
+      "GUID": "guid-49",
+      "stoken": "stoken-49",
+      "atoken": "atoken-49"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-49-1",
+        "timestamp": 1761847399963,
+        "levelId": 100049,
+        "levelNumber": 50,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-49-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-49-3",
+        "timestamp": 1761847279963,
+        "levelId": 100049,
+        "levelNumber": 50
+      },
+      {
+        "answer": "queue-49-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-49-5",
+        "timestamp": 1761847159963,
+        "levelId": 100049,
+        "levelNumber": 50
+      },
+      {
+        "answer": "queue-49-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-49-7",
+        "timestamp": 1761847039963,
+        "levelId": 100049,
+        "levelNumber": 50,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-49-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100049,
+      "levelNumber": 50,
+      "timestamp": 1761847147318
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1757613799963,
+    "updatedAt": 1761670999963
+  },
+  "telegram::tg000050": {
+    "platform": "telegram",
+    "userId": "tg000050",
+    "login": "telegram_user_50",
+    "password": "enc:v1:dummy:50:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50050",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-50-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-50-1"
+      },
+      {
+        "answer": "burst-50-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-50-2"
+      },
+      {
+        "answer": "burst-50-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-50-3"
+      },
+      {
+        "answer": "burst-50-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-50-4"
+      },
+      {
+        "answer": "burst-50-5",
+        "timestamp": 1761847387963,
+        "progressMessageId": "msg-50-5"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100050,
+      "levelNumber": 1,
+      "timestamp": 1761847277586
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1757527399963,
+    "updatedAt": 1761667399963
+  },
+  "vk::vk000051": {
+    "platform": "vk",
+    "userId": "vk000051",
+    "login": "vk_user_51",
+    "password": "enc:v1:dummy:51:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50051",
+    "authCookies": {
+      "GUID": "guid-51",
+      "stoken": "stoken-51",
+      "atoken": "atoken-51"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100051,
+      "levelNumber": 2,
+      "timestamp": 1761847307778
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1757440999963,
+    "updatedAt": 1761663799963
+  },
+  "telegram::tg000052": {
+    "platform": "telegram",
+    "userId": "tg000052",
+    "login": "telegram_user_52",
+    "password": "enc:v1:dummy:52:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50052",
+    "authCookies": {
+      "GUID": "guid-52",
+      "stoken": "stoken-52",
+      "atoken": "atoken-52"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100052,
+      "levelNumber": 3,
+      "timestamp": 1761847049673
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": false,
+    "createdAt": 1757354599963,
+    "updatedAt": 1761660199963,
+    "pendingAnswerDecision": {
+      "answer": "pending-52",
+      "oldLevel": 3,
+      "newLevel": 4
+    }
+  },
+  "telegram::tg000053": {
+    "platform": "telegram",
+    "userId": "tg000053",
+    "login": "telegram_user_53",
+    "password": "enc:v1:dummy:53:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50053",
+    "authCookies": {
+      "GUID": "guid-53",
+      "stoken": "stoken-53",
+      "atoken": "atoken-53"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100053,
+      "levelNumber": 4,
+      "timestamp": 1761846856353
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1757268199963,
+    "updatedAt": 1761656599963
+  },
+  "vk::vk000054": {
+    "platform": "vk",
+    "userId": "vk000054",
+    "login": "vk_user_54",
+    "password": "enc:v1:dummy:54:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50054",
+    "authCookies": {
+      "GUID": "guid-54",
+      "stoken": "stoken-54",
+      "atoken": "atoken-54"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-54-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-54-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-54-3",
+        "timestamp": 1761847309963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100054,
+      "levelNumber": 5,
+      "timestamp": 1761846899256
+    },
+    "accumulationStartLevel": {
+      "levelId": 100054,
+      "levelNumber": 5
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1757181799963,
+    "updatedAt": 1761652999963
+  },
+  "telegram::tg000055": {
+    "platform": "telegram",
+    "userId": "tg000055",
+    "login": "telegram_user_55",
+    "password": "enc:v1:dummy:55:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50055",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100055,
+      "levelNumber": 6,
+      "timestamp": 1761846846172
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1757095399963,
+    "updatedAt": 1761649399963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 6,
+      "newLevelNumber": 7,
+      "queueSize": 5
+    }
+  },
+  "telegram::tg000056": {
+    "platform": "telegram",
+    "userId": "tg000056",
+    "login": "telegram_user_56",
+    "password": "enc:v1:dummy:56:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50056",
+    "authCookies": {
+      "GUID": "guid-56",
+      "stoken": "stoken-56",
+      "atoken": "atoken-56"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-56-1",
+        "timestamp": 1761847399963,
+        "levelId": 100056,
+        "levelNumber": 7,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-56-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-56-3",
+        "timestamp": 1761847279963,
+        "levelId": 100056,
+        "levelNumber": 7
+      },
+      {
+        "answer": "queue-56-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-56-5",
+        "timestamp": 1761847159963,
+        "levelId": 100056,
+        "levelNumber": 7
+      },
+      {
+        "answer": "queue-56-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-56-7",
+        "timestamp": 1761847039963,
+        "levelId": 100056,
+        "levelNumber": 7,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-56-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-56-9",
+        "timestamp": 1761846919963,
+        "levelId": 100056,
+        "levelNumber": 7
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100056,
+      "levelNumber": 7,
+      "timestamp": 1761847244320
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": false,
+    "createdAt": 1757008999963,
+    "updatedAt": 1761645799963
+  },
+  "vk::vk000057": {
+    "platform": "vk",
+    "userId": "vk000057",
+    "login": "vk_user_57",
+    "password": "enc:v1:dummy:57:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50057",
+    "authCookies": {
+      "GUID": "guid-57",
+      "stoken": "stoken-57",
+      "atoken": "atoken-57"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100057,
+      "levelNumber": 8,
+      "timestamp": 1761846812529
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1756922599963,
+    "updatedAt": 1761642199963
+  },
+  "telegram::tg000058": {
+    "platform": "telegram",
+    "userId": "tg000058",
+    "login": "telegram_user_58",
+    "password": "enc:v1:dummy:58:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50058",
+    "authCookies": {
+      "GUID": "guid-58",
+      "stoken": "stoken-58",
+      "atoken": "atoken-58"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100058,
+      "levelNumber": 9,
+      "timestamp": 1761847121445
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1756836199963,
+    "updatedAt": 1761638599963
+  },
+  "telegram::tg000059": {
+    "platform": "telegram",
+    "userId": "tg000059",
+    "login": "telegram_user_59",
+    "password": "enc:v1:dummy:59:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50059",
+    "authCookies": {
+      "GUID": "guid-59",
+      "stoken": "stoken-59",
+      "atoken": "atoken-59"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100059,
+      "levelNumber": 10,
+      "timestamp": 1761846928217
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1756749799963,
+    "updatedAt": 1761634999963
+  },
+  "vk::vk000060": {
+    "platform": "vk",
+    "userId": "vk000060",
+    "login": "vk_user_60",
+    "password": "enc:v1:dummy:60:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50060",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-60-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-60-1"
+      },
+      {
+        "answer": "burst-60-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-60-2"
+      },
+      {
+        "answer": "burst-60-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-60-3"
+      },
+      {
+        "answer": "burst-60-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-60-4"
+      },
+      {
+        "answer": "burst-60-5",
+        "timestamp": 1761847387963,
+        "progressMessageId": "msg-60-5"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100060,
+      "levelNumber": 11,
+      "timestamp": 1761847231150
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": false,
+    "createdAt": 1756663399963,
+    "updatedAt": 1761631399963
+  },
+  "telegram::tg000061": {
+    "platform": "telegram",
+    "userId": "tg000061",
+    "login": "telegram_user_61",
+    "password": "enc:v1:dummy:61:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50061",
+    "authCookies": {
+      "GUID": "guid-61",
+      "stoken": "stoken-61",
+      "atoken": "atoken-61"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100061,
+      "levelNumber": 12,
+      "timestamp": 1761846902062
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1756576999963,
+    "updatedAt": 1761627799963
+  },
+  "telegram::tg000062": {
+    "platform": "telegram",
+    "userId": "tg000062",
+    "login": "telegram_user_62",
+    "password": "enc:v1:dummy:62:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50062",
+    "authCookies": {
+      "GUID": "guid-62",
+      "stoken": "stoken-62",
+      "atoken": "atoken-62"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100062,
+      "levelNumber": 13,
+      "timestamp": 1761847151812
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1756490599963,
+    "updatedAt": 1761624199963
+  },
+  "vk::vk000063": {
+    "platform": "vk",
+    "userId": "vk000063",
+    "login": "vk_user_63",
+    "password": "enc:v1:dummy:63:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50063",
+    "authCookies": {
+      "GUID": "guid-63",
+      "stoken": "stoken-63",
+      "atoken": "atoken-63"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-63-1",
+        "timestamp": 1761847399963,
+        "levelId": 100063,
+        "levelNumber": 14,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-63-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-63-3",
+        "timestamp": 1761847279963,
+        "levelId": 100063,
+        "levelNumber": 14
+      },
+      {
+        "answer": "queue-63-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-63-5",
+        "timestamp": 1761847159963,
+        "levelId": 100063,
+        "levelNumber": 14
+      },
+      {
+        "answer": "queue-63-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-63-7",
+        "timestamp": 1761847039963,
+        "levelId": 100063,
+        "levelNumber": 14,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-63-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-63-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-63-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-63-3",
+        "timestamp": 1761847309963
+      },
+      {
+        "answer": "acc-63-4",
+        "timestamp": 1761847264963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100063,
+      "levelNumber": 14,
+      "timestamp": 1761846936653
+    },
+    "accumulationStartLevel": {
+      "levelId": 100063,
+      "levelNumber": 14
+    },
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1756404199963,
+    "updatedAt": 1761620599963
+  },
+  "telegram::tg000064": {
+    "platform": "telegram",
+    "userId": "tg000064",
+    "login": "telegram_user_64",
+    "password": "enc:v1:dummy:64:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50064",
+    "authCookies": {
+      "GUID": "guid-64",
+      "stoken": "stoken-64",
+      "atoken": "atoken-64"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100064,
+      "levelNumber": 15,
+      "timestamp": 1761846979787
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": false,
+    "createdAt": 1756317799963,
+    "updatedAt": 1761616999963
+  },
+  "telegram::tg000065": {
+    "platform": "telegram",
+    "userId": "tg000065",
+    "login": "telegram_user_65",
+    "password": "enc:v1:dummy:65:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50065",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100065,
+      "levelNumber": 16,
+      "timestamp": 1761846808004
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1756231399963,
+    "updatedAt": 1761613399963,
+    "pendingAnswerDecision": {
+      "answer": "pending-65",
+      "oldLevel": 16,
+      "newLevel": 17
+    }
+  },
+  "vk::vk000066": {
+    "platform": "vk",
+    "userId": "vk000066",
+    "login": "vk_user_66",
+    "password": "enc:v1:dummy:66:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50066",
+    "authCookies": {
+      "GUID": "guid-66",
+      "stoken": "stoken-66",
+      "atoken": "atoken-66"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100066,
+      "levelNumber": 17,
+      "timestamp": 1761847101159
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1756144999963,
+    "updatedAt": 1761609799963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 17,
+      "newLevelNumber": 18,
+      "queueSize": 7
+    }
+  },
+  "telegram::tg000067": {
+    "platform": "telegram",
+    "userId": "tg000067",
+    "login": "telegram_user_67",
+    "password": "enc:v1:dummy:67:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50067",
+    "authCookies": {
+      "GUID": "guid-67",
+      "stoken": "stoken-67",
+      "atoken": "atoken-67"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100067,
+      "levelNumber": 18,
+      "timestamp": 1761847304643
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1756058599963,
+    "updatedAt": 1761606199963
+  },
+  "telegram::tg000068": {
+    "platform": "telegram",
+    "userId": "tg000068",
+    "login": "telegram_user_68",
+    "password": "enc:v1:dummy:68:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50068",
+    "authCookies": {
+      "GUID": "guid-68",
+      "stoken": "stoken-68",
+      "atoken": "atoken-68"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100068,
+      "levelNumber": 19,
+      "timestamp": 1761847226621
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": false,
+    "createdAt": 1755972199963,
+    "updatedAt": 1761602599963
+  },
+  "vk::vk000069": {
+    "platform": "vk",
+    "userId": "vk000069",
+    "login": "vk_user_69",
+    "password": "enc:v1:dummy:69:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50069",
+    "authCookies": {
+      "GUID": "guid-69",
+      "stoken": "stoken-69",
+      "atoken": "atoken-69"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100069,
+      "levelNumber": 20,
+      "timestamp": 1761847000682
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1755885799963,
+    "updatedAt": 1761598999963
+  },
+  "telegram::tg000070": {
+    "platform": "telegram",
+    "userId": "tg000070",
+    "login": "telegram_user_70",
+    "password": "enc:v1:dummy:70:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50070",
+    "authCookies": {},
+    "answerQueue": [
+      {
+        "answer": "queue-70-1",
+        "timestamp": 1761847399963,
+        "levelId": 100070,
+        "levelNumber": 21,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-70-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-70-3",
+        "timestamp": 1761847279963,
+        "levelId": 100070,
+        "levelNumber": 21
+      },
+      {
+        "answer": "queue-70-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-70-5",
+        "timestamp": 1761847159963,
+        "levelId": 100070,
+        "levelNumber": 21
+      },
+      {
+        "answer": "queue-70-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-70-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-70-1"
+      },
+      {
+        "answer": "burst-70-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-70-2"
+      },
+      {
+        "answer": "burst-70-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-70-3"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100070,
+      "levelNumber": 21,
+      "timestamp": 1761846857473
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1755799399963,
+    "updatedAt": 1761595399963
+  },
+  "telegram::tg000071": {
+    "platform": "telegram",
+    "userId": "tg000071",
+    "login": "telegram_user_71",
+    "password": "enc:v1:dummy:71:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50071",
+    "authCookies": {
+      "GUID": "guid-71",
+      "stoken": "stoken-71",
+      "atoken": "atoken-71"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100071,
+      "levelNumber": 22,
+      "timestamp": 1761846998890
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1755712999963,
+    "updatedAt": 1761591799963
+  },
+  "vk::vk000072": {
+    "platform": "vk",
+    "userId": "vk000072",
+    "login": "vk_user_72",
+    "password": "enc:v1:dummy:72:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50072",
+    "authCookies": {
+      "GUID": "guid-72",
+      "stoken": "stoken-72",
+      "atoken": "atoken-72"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-72-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-72-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-72-3",
+        "timestamp": 1761847309963
+      },
+      {
+        "answer": "acc-72-4",
+        "timestamp": 1761847264963
+      },
+      {
+        "answer": "acc-72-5",
+        "timestamp": 1761847219963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100072,
+      "levelNumber": 23,
+      "timestamp": 1761847227688
+    },
+    "accumulationStartLevel": {
+      "levelId": 100072,
+      "levelNumber": 23
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": false,
+    "createdAt": 1755626599963,
+    "updatedAt": 1761588199963
+  },
+  "telegram::tg000073": {
+    "platform": "telegram",
+    "userId": "tg000073",
+    "login": "telegram_user_73",
+    "password": "enc:v1:dummy:73:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50073",
+    "authCookies": {
+      "GUID": "guid-73",
+      "stoken": "stoken-73",
+      "atoken": "atoken-73"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100073,
+      "levelNumber": 24,
+      "timestamp": 1761847139551
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1755540199963,
+    "updatedAt": 1761584599963
+  },
+  "telegram::tg000074": {
+    "platform": "telegram",
+    "userId": "tg000074",
+    "login": "telegram_user_74",
+    "password": "enc:v1:dummy:74:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50074",
+    "authCookies": {
+      "GUID": "guid-74",
+      "stoken": "stoken-74",
+      "atoken": "atoken-74"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100074,
+      "levelNumber": 25,
+      "timestamp": 1761847189822
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1755453799963,
+    "updatedAt": 1761580999963
+  },
+  "vk::vk000075": {
+    "platform": "vk",
+    "userId": "vk000075",
+    "login": "vk_user_75",
+    "password": "enc:v1:dummy:75:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50075",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100075,
+      "levelNumber": 26,
+      "timestamp": 1761846874703
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1755367399963,
+    "updatedAt": 1761577399963
+  },
+  "telegram::tg000076": {
+    "platform": "telegram",
+    "userId": "tg000076",
+    "login": "telegram_user_76",
+    "password": "enc:v1:dummy:76:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50076",
+    "authCookies": {
+      "GUID": "guid-76",
+      "stoken": "stoken-76",
+      "atoken": "atoken-76"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100076,
+      "levelNumber": 27,
+      "timestamp": 1761847018797
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": false,
+    "createdAt": 1755280999963,
+    "updatedAt": 1761573799963
+  },
+  "telegram::tg000077": {
+    "platform": "telegram",
+    "userId": "tg000077",
+    "login": "telegram_user_77",
+    "password": "enc:v1:dummy:77:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50077",
+    "authCookies": {
+      "GUID": "guid-77",
+      "stoken": "stoken-77",
+      "atoken": "atoken-77"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-77-1",
+        "timestamp": 1761847399963,
+        "levelId": 100077,
+        "levelNumber": 28,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-77-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-77-3",
+        "timestamp": 1761847279963,
+        "levelId": 100077,
+        "levelNumber": 28
+      },
+      {
+        "answer": "queue-77-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-77-5",
+        "timestamp": 1761847159963,
+        "levelId": 100077,
+        "levelNumber": 28
+      },
+      {
+        "answer": "queue-77-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-77-7",
+        "timestamp": 1761847039963,
+        "levelId": 100077,
+        "levelNumber": 28,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-77-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-77-9",
+        "timestamp": 1761846919963,
+        "levelId": 100077,
+        "levelNumber": 28
+      },
+      {
+        "answer": "queue-77-10",
+        "timestamp": 1761846859963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-77-11",
+        "timestamp": 1761846799963,
+        "levelId": 100077,
+        "levelNumber": 28
+      },
+      {
+        "answer": "queue-77-12",
+        "timestamp": 1761846739963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100077,
+      "levelNumber": 28,
+      "timestamp": 1761847155975
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1755194599963,
+    "updatedAt": 1761570199963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 28,
+      "newLevelNumber": 29,
+      "queueSize": 12
+    }
+  },
+  "vk::vk000078": {
+    "platform": "vk",
+    "userId": "vk000078",
+    "login": "vk_user_78",
+    "password": "enc:v1:dummy:78:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50078",
+    "authCookies": {
+      "GUID": "guid-78",
+      "stoken": "stoken-78",
+      "atoken": "atoken-78"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100078,
+      "levelNumber": 29,
+      "timestamp": 1761847169830
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1755108199963,
+    "updatedAt": 1761566599963,
+    "pendingAnswerDecision": {
+      "answer": "pending-78",
+      "oldLevel": 29,
+      "newLevel": 30
+    }
+  },
+  "telegram::tg000079": {
+    "platform": "telegram",
+    "userId": "tg000079",
+    "login": "telegram_user_79",
+    "password": "enc:v1:dummy:79:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50079",
+    "authCookies": {
+      "GUID": "guid-79",
+      "stoken": "stoken-79",
+      "atoken": "atoken-79"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100079,
+      "levelNumber": 30,
+      "timestamp": 1761846984810
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1755021799963,
+    "updatedAt": 1761562999963
+  },
+  "telegram::tg000080": {
+    "platform": "telegram",
+    "userId": "tg000080",
+    "login": "telegram_user_80",
+    "password": "enc:v1:dummy:80:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50080",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-80-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-80-1"
+      },
+      {
+        "answer": "burst-80-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-80-2"
+      },
+      {
+        "answer": "burst-80-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-80-3"
+      },
+      {
+        "answer": "burst-80-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-80-4"
+      },
+      {
+        "answer": "burst-80-5",
+        "timestamp": 1761847387963,
+        "progressMessageId": "msg-80-5"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100080,
+      "levelNumber": 31,
+      "timestamp": 1761847335787
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": false,
+    "createdAt": 1754935399963,
+    "updatedAt": 1761559399963
+  },
+  "vk::vk000081": {
+    "platform": "vk",
+    "userId": "vk000081",
+    "login": "vk_user_81",
+    "password": "enc:v1:dummy:81:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50081",
+    "authCookies": {
+      "GUID": "guid-81",
+      "stoken": "stoken-81",
+      "atoken": "atoken-81"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-81-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-81-2",
+        "timestamp": 1761847354963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100081,
+      "levelNumber": 32,
+      "timestamp": 1761846955434
+    },
+    "accumulationStartLevel": {
+      "levelId": 100081,
+      "levelNumber": 32
+    },
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1754848999963,
+    "updatedAt": 1761555799963
+  },
+  "telegram::tg000082": {
+    "platform": "telegram",
+    "userId": "tg000082",
+    "login": "telegram_user_82",
+    "password": "enc:v1:dummy:82:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50082",
+    "authCookies": {
+      "GUID": "guid-82",
+      "stoken": "stoken-82",
+      "atoken": "atoken-82"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100082,
+      "levelNumber": 33,
+      "timestamp": 1761847285562
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1754762599963,
+    "updatedAt": 1761552199963
+  },
+  "telegram::tg000083": {
+    "platform": "telegram",
+    "userId": "tg000083",
+    "login": "telegram_user_83",
+    "password": "enc:v1:dummy:83:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50083",
+    "authCookies": {
+      "GUID": "guid-83",
+      "stoken": "stoken-83",
+      "atoken": "atoken-83"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100083,
+      "levelNumber": 34,
+      "timestamp": 1761846953031
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1754676199963,
+    "updatedAt": 1761548599963
+  },
+  "vk::vk000084": {
+    "platform": "vk",
+    "userId": "vk000084",
+    "login": "vk_user_84",
+    "password": "enc:v1:dummy:84:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50084",
+    "authCookies": {
+      "GUID": "guid-84",
+      "stoken": "stoken-84",
+      "atoken": "atoken-84"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-84-1",
+        "timestamp": 1761847399963,
+        "levelId": 100084,
+        "levelNumber": 35,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-84-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-84-3",
+        "timestamp": 1761847279963,
+        "levelId": 100084,
+        "levelNumber": 35
+      },
+      {
+        "answer": "queue-84-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-84-5",
+        "timestamp": 1761847159963,
+        "levelId": 100084,
+        "levelNumber": 35
+      },
+      {
+        "answer": "queue-84-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-84-7",
+        "timestamp": 1761847039963,
+        "levelId": 100084,
+        "levelNumber": 35,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-84-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-84-9",
+        "timestamp": 1761846919963,
+        "levelId": 100084,
+        "levelNumber": 35
+      },
+      {
+        "answer": "queue-84-10",
+        "timestamp": 1761846859963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-84-11",
+        "timestamp": 1761846799963,
+        "levelId": 100084,
+        "levelNumber": 35
+      },
+      {
+        "answer": "queue-84-12",
+        "timestamp": 1761846739963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-84-13",
+        "timestamp": 1761846679963,
+        "levelId": 100084,
+        "levelNumber": 35,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-84-14",
+        "timestamp": 1761846619963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-84-15",
+        "timestamp": 1761846559963,
+        "levelId": 100084,
+        "levelNumber": 35
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100084,
+      "levelNumber": 35,
+      "timestamp": 1761846994658
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": false,
+    "createdAt": 1754589799963,
+    "updatedAt": 1761544999963
+  },
+  "telegram::tg000085": {
+    "platform": "telegram",
+    "userId": "tg000085",
+    "login": "telegram_user_85",
+    "password": "enc:v1:dummy:85:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50085",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100085,
+      "levelNumber": 36,
+      "timestamp": 1761846920459
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1754503399963,
+    "updatedAt": 1761541399963
+  },
+  "telegram::tg000086": {
+    "platform": "telegram",
+    "userId": "tg000086",
+    "login": "telegram_user_86",
+    "password": "enc:v1:dummy:86:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50086",
+    "authCookies": {
+      "GUID": "guid-86",
+      "stoken": "stoken-86",
+      "atoken": "atoken-86"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100086,
+      "levelNumber": 37,
+      "timestamp": 1761847311955
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1754416999963,
+    "updatedAt": 1761537799963
+  },
+  "vk::vk000087": {
+    "platform": "vk",
+    "userId": "vk000087",
+    "login": "vk_user_87",
+    "password": "enc:v1:dummy:87:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50087",
+    "authCookies": {
+      "GUID": "guid-87",
+      "stoken": "stoken-87",
+      "atoken": "atoken-87"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100087,
+      "levelNumber": 38,
+      "timestamp": 1761846913948
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1754330599963,
+    "updatedAt": 1761534199963
+  },
+  "telegram::tg000088": {
+    "platform": "telegram",
+    "userId": "tg000088",
+    "login": "telegram_user_88",
+    "password": "enc:v1:dummy:88:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50088",
+    "authCookies": {
+      "GUID": "guid-88",
+      "stoken": "stoken-88",
+      "atoken": "atoken-88"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100088,
+      "levelNumber": 39,
+      "timestamp": 1761847202380
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": false,
+    "createdAt": 1754244199963,
+    "updatedAt": 1761530599963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 39,
+      "newLevelNumber": 40,
+      "queueSize": 5
+    }
+  },
+  "telegram::tg000089": {
+    "platform": "telegram",
+    "userId": "tg000089",
+    "login": "telegram_user_89",
+    "password": "enc:v1:dummy:89:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50089",
+    "authCookies": {
+      "GUID": "guid-89",
+      "stoken": "stoken-89",
+      "atoken": "atoken-89"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100089,
+      "levelNumber": 40,
+      "timestamp": 1761846976773
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1754157799963,
+    "updatedAt": 1761526999963
+  },
+  "vk::vk000090": {
+    "platform": "vk",
+    "userId": "vk000090",
+    "login": "vk_user_90",
+    "password": "enc:v1:dummy:90:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50090",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-90-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-90-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-90-3",
+        "timestamp": 1761847309963
+      },
+      {
+        "answer": "acc-90-4",
+        "timestamp": 1761847264963
+      },
+      {
+        "answer": "acc-90-5",
+        "timestamp": 1761847219963
+      }
+    ],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-90-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-90-1"
+      },
+      {
+        "answer": "burst-90-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-90-2"
+      },
+      {
+        "answer": "burst-90-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-90-3"
+      },
+      {
+        "answer": "burst-90-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-90-4"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100090,
+      "levelNumber": 41,
+      "timestamp": 1761847196168
+    },
+    "accumulationStartLevel": {
+      "levelId": 100090,
+      "levelNumber": 41
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1754071399963,
+    "updatedAt": 1761523399963
+  },
+  "telegram::tg000091": {
+    "platform": "telegram",
+    "userId": "tg000091",
+    "login": "telegram_user_91",
+    "password": "enc:v1:dummy:91:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50091",
+    "authCookies": {
+      "GUID": "guid-91",
+      "stoken": "stoken-91",
+      "atoken": "atoken-91"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-91-1",
+        "timestamp": 1761847399963,
+        "levelId": 100091,
+        "levelNumber": 42,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-91-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-91-3",
+        "timestamp": 1761847279963,
+        "levelId": 100091,
+        "levelNumber": 42
+      },
+      {
+        "answer": "queue-91-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-91-5",
+        "timestamp": 1761847159963,
+        "levelId": 100091,
+        "levelNumber": 42
+      },
+      {
+        "answer": "queue-91-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-91-7",
+        "timestamp": 1761847039963,
+        "levelId": 100091,
+        "levelNumber": 42,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-91-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-91-9",
+        "timestamp": 1761846919963,
+        "levelId": 100091,
+        "levelNumber": 42
+      },
+      {
+        "answer": "queue-91-10",
+        "timestamp": 1761846859963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-91-11",
+        "timestamp": 1761846799963,
+        "levelId": 100091,
+        "levelNumber": 42
+      },
+      {
+        "answer": "queue-91-12",
+        "timestamp": 1761846739963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100091,
+      "levelNumber": 42,
+      "timestamp": 1761847049917
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1753984999963,
+    "updatedAt": 1761519799963,
+    "pendingAnswerDecision": {
+      "answer": "pending-91",
+      "oldLevel": 42,
+      "newLevel": 43
+    }
+  },
+  "telegram::tg000092": {
+    "platform": "telegram",
+    "userId": "tg000092",
+    "login": "telegram_user_92",
+    "password": "enc:v1:dummy:92:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50092",
+    "authCookies": {
+      "GUID": "guid-92",
+      "stoken": "stoken-92",
+      "atoken": "atoken-92"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100092,
+      "levelNumber": 43,
+      "timestamp": 1761847136535
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": false,
+    "createdAt": 1753898599963,
+    "updatedAt": 1761516199963
+  },
+  "vk::vk000093": {
+    "platform": "vk",
+    "userId": "vk000093",
+    "login": "vk_user_93",
+    "password": "enc:v1:dummy:93:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50093",
+    "authCookies": {
+      "GUID": "guid-93",
+      "stoken": "stoken-93",
+      "atoken": "atoken-93"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100093,
+      "levelNumber": 44,
+      "timestamp": 1761847251722
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1753812199963,
+    "updatedAt": 1761512599963
+  },
+  "telegram::tg000094": {
+    "platform": "telegram",
+    "userId": "tg000094",
+    "login": "telegram_user_94",
+    "password": "enc:v1:dummy:94:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50094",
+    "authCookies": {
+      "GUID": "guid-94",
+      "stoken": "stoken-94",
+      "atoken": "atoken-94"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100094,
+      "levelNumber": 45,
+      "timestamp": 1761846860726
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1753725799963,
+    "updatedAt": 1761508999963
+  },
+  "telegram::tg000095": {
+    "platform": "telegram",
+    "userId": "tg000095",
+    "login": "telegram_user_95",
+    "password": "enc:v1:dummy:95:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50095",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100095,
+      "levelNumber": 46,
+      "timestamp": 1761847148295
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1753639399963,
+    "updatedAt": 1761505399963
+  },
+  "vk::vk000096": {
+    "platform": "vk",
+    "userId": "vk000096",
+    "login": "vk_user_96",
+    "password": "enc:v1:dummy:96:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50096",
+    "authCookies": {
+      "GUID": "guid-96",
+      "stoken": "stoken-96",
+      "atoken": "atoken-96"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100096,
+      "levelNumber": 47,
+      "timestamp": 1761847016239
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": false,
+    "createdAt": 1753552999963,
+    "updatedAt": 1761501799963
+  },
+  "telegram::tg000097": {
+    "platform": "telegram",
+    "userId": "tg000097",
+    "login": "telegram_user_97",
+    "password": "enc:v1:dummy:97:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50097",
+    "authCookies": {
+      "GUID": "guid-97",
+      "stoken": "stoken-97",
+      "atoken": "atoken-97"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100097,
+      "levelNumber": 48,
+      "timestamp": 1761846842870
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1753466599963,
+    "updatedAt": 1761498199963
+  },
+  "telegram::tg000098": {
+    "platform": "telegram",
+    "userId": "tg000098",
+    "login": "telegram_user_98",
+    "password": "enc:v1:dummy:98:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50098",
+    "authCookies": {
+      "GUID": "guid-98",
+      "stoken": "stoken-98",
+      "atoken": "atoken-98"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-98-1",
+        "timestamp": 1761847399963,
+        "levelId": 100098,
+        "levelNumber": 49,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-98-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-98-3",
+        "timestamp": 1761847279963,
+        "levelId": 100098,
+        "levelNumber": 49
+      },
+      {
+        "answer": "queue-98-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-98-5",
+        "timestamp": 1761847159963,
+        "levelId": 100098,
+        "levelNumber": 49
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100098,
+      "levelNumber": 49,
+      "timestamp": 1761846837461
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1753380199963,
+    "updatedAt": 1761494599963
+  },
+  "vk::vk000099": {
+    "platform": "vk",
+    "userId": "vk000099",
+    "login": "vk_user_99",
+    "password": "enc:v1:dummy:99:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50099",
+    "authCookies": {
+      "GUID": "guid-99",
+      "stoken": "stoken-99",
+      "atoken": "atoken-99"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-99-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-99-2",
+        "timestamp": 1761847354963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100099,
+      "levelNumber": 50,
+      "timestamp": 1761846883334
+    },
+    "accumulationStartLevel": {
+      "levelId": 100099,
+      "levelNumber": 50
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1753293799963,
+    "updatedAt": 1761490999963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 50,
+      "newLevelNumber": 51,
+      "queueSize": 4
+    }
+  },
+  "telegram::tg000100": {
+    "platform": "telegram",
+    "userId": "tg000100",
+    "login": "telegram_user_100",
+    "password": "enc:v1:dummy:100:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50100",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-100-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-100-1"
+      },
+      {
+        "answer": "burst-100-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-100-2"
+      },
+      {
+        "answer": "burst-100-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-100-3"
+      },
+      {
+        "answer": "burst-100-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-100-4"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100100,
+      "levelNumber": 1,
+      "timestamp": 1761846965665
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": false,
+    "createdAt": 1753207399963,
+    "updatedAt": 1761487399963
+  },
+  "telegram::tg000101": {
+    "platform": "telegram",
+    "userId": "tg000101",
+    "login": "telegram_user_101",
+    "password": "enc:v1:dummy:101:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50101",
+    "authCookies": {
+      "GUID": "guid-101",
+      "stoken": "stoken-101",
+      "atoken": "atoken-101"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100101,
+      "levelNumber": 2,
+      "timestamp": 1761847045603
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1753120999963,
+    "updatedAt": 1761483799963
+  },
+  "vk::vk000102": {
+    "platform": "vk",
+    "userId": "vk000102",
+    "login": "vk_user_102",
+    "password": "enc:v1:dummy:102:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50102",
+    "authCookies": {
+      "GUID": "guid-102",
+      "stoken": "stoken-102",
+      "atoken": "atoken-102"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100102,
+      "levelNumber": 3,
+      "timestamp": 1761847271511
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1753034599963,
+    "updatedAt": 1761480199963
+  },
+  "telegram::tg000103": {
+    "platform": "telegram",
+    "userId": "tg000103",
+    "login": "telegram_user_103",
+    "password": "enc:v1:dummy:103:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50103",
+    "authCookies": {
+      "GUID": "guid-103",
+      "stoken": "stoken-103",
+      "atoken": "atoken-103"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100103,
+      "levelNumber": 4,
+      "timestamp": 1761847104830
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1752948199963,
+    "updatedAt": 1761476599963
+  },
+  "telegram::tg000104": {
+    "platform": "telegram",
+    "userId": "tg000104",
+    "login": "telegram_user_104",
+    "password": "enc:v1:dummy:104:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50104",
+    "authCookies": {
+      "GUID": "guid-104",
+      "stoken": "stoken-104",
+      "atoken": "atoken-104"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100104,
+      "levelNumber": 5,
+      "timestamp": 1761847202345
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": false,
+    "createdAt": 1752861799963,
+    "updatedAt": 1761472999963,
+    "pendingAnswerDecision": {
+      "answer": "pending-104",
+      "oldLevel": 5,
+      "newLevel": 6
+    }
+  },
+  "vk::vk000105": {
+    "platform": "vk",
+    "userId": "vk000105",
+    "login": "vk_user_105",
+    "password": "enc:v1:dummy:105:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50105",
+    "authCookies": {},
+    "answerQueue": [
+      {
+        "answer": "queue-105-1",
+        "timestamp": 1761847399963,
+        "levelId": 100105,
+        "levelNumber": 6,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-105-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-105-3",
+        "timestamp": 1761847279963,
+        "levelId": 100105,
+        "levelNumber": 6
+      },
+      {
+        "answer": "queue-105-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-105-5",
+        "timestamp": 1761847159963,
+        "levelId": 100105,
+        "levelNumber": 6
+      },
+      {
+        "answer": "queue-105-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-105-7",
+        "timestamp": 1761847039963,
+        "levelId": 100105,
+        "levelNumber": 6,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100105,
+      "levelNumber": 6,
+      "timestamp": 1761846987490
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1752775399963,
+    "updatedAt": 1761469399963
+  },
+  "telegram::tg000106": {
+    "platform": "telegram",
+    "userId": "tg000106",
+    "login": "telegram_user_106",
+    "password": "enc:v1:dummy:106:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50106",
+    "authCookies": {
+      "GUID": "guid-106",
+      "stoken": "stoken-106",
+      "atoken": "atoken-106"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100106,
+      "levelNumber": 7,
+      "timestamp": 1761847292165
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1752688999963,
+    "updatedAt": 1761465799963
+  },
+  "telegram::tg000107": {
+    "platform": "telegram",
+    "userId": "tg000107",
+    "login": "telegram_user_107",
+    "password": "enc:v1:dummy:107:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50107",
+    "authCookies": {
+      "GUID": "guid-107",
+      "stoken": "stoken-107",
+      "atoken": "atoken-107"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100107,
+      "levelNumber": 8,
+      "timestamp": 1761847022184
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1752602599963,
+    "updatedAt": 1761462199963
+  },
+  "vk::vk000108": {
+    "platform": "vk",
+    "userId": "vk000108",
+    "login": "vk_user_108",
+    "password": "enc:v1:dummy:108:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50108",
+    "authCookies": {
+      "GUID": "guid-108",
+      "stoken": "stoken-108",
+      "atoken": "atoken-108"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-108-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-108-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-108-3",
+        "timestamp": 1761847309963
+      },
+      {
+        "answer": "acc-108-4",
+        "timestamp": 1761847264963
+      },
+      {
+        "answer": "acc-108-5",
+        "timestamp": 1761847219963
+      },
+      {
+        "answer": "acc-108-6",
+        "timestamp": 1761847174963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100108,
+      "levelNumber": 9,
+      "timestamp": 1761847150220
+    },
+    "accumulationStartLevel": {
+      "levelId": 100108,
+      "levelNumber": 9
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": false,
+    "createdAt": 1752516199963,
+    "updatedAt": 1761458599963
+  },
+  "telegram::tg000109": {
+    "platform": "telegram",
+    "userId": "tg000109",
+    "login": "telegram_user_109",
+    "password": "enc:v1:dummy:109:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50109",
+    "authCookies": {
+      "GUID": "guid-109",
+      "stoken": "stoken-109",
+      "atoken": "atoken-109"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100109,
+      "levelNumber": 10,
+      "timestamp": 1761847071316
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1752429799963,
+    "updatedAt": 1761454999963
+  },
+  "telegram::tg000110": {
+    "platform": "telegram",
+    "userId": "tg000110",
+    "login": "telegram_user_110",
+    "password": "enc:v1:dummy:110:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50110",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-110-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-110-1"
+      },
+      {
+        "answer": "burst-110-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-110-2"
+      },
+      {
+        "answer": "burst-110-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-110-3"
+      },
+      {
+        "answer": "burst-110-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-110-4"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100110,
+      "levelNumber": 11,
+      "timestamp": 1761846962681
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1752343399963,
+    "updatedAt": 1761451399963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 11,
+      "newLevelNumber": 12,
+      "queueSize": 7
+    }
+  },
+  "vk::vk000111": {
+    "platform": "vk",
+    "userId": "vk000111",
+    "login": "vk_user_111",
+    "password": "enc:v1:dummy:111:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50111",
+    "authCookies": {
+      "GUID": "guid-111",
+      "stoken": "stoken-111",
+      "atoken": "atoken-111"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100111,
+      "levelNumber": 12,
+      "timestamp": 1761846827588
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1752256999963,
+    "updatedAt": 1761447799963
+  },
+  "telegram::tg000112": {
+    "platform": "telegram",
+    "userId": "tg000112",
+    "login": "telegram_user_112",
+    "password": "enc:v1:dummy:112:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50112",
+    "authCookies": {
+      "GUID": "guid-112",
+      "stoken": "stoken-112",
+      "atoken": "atoken-112"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-112-1",
+        "timestamp": 1761847399963,
+        "levelId": 100112,
+        "levelNumber": 13,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-112-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-112-3",
+        "timestamp": 1761847279963,
+        "levelId": 100112,
+        "levelNumber": 13
+      },
+      {
+        "answer": "queue-112-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-112-5",
+        "timestamp": 1761847159963,
+        "levelId": 100112,
+        "levelNumber": 13
+      },
+      {
+        "answer": "queue-112-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-112-7",
+        "timestamp": 1761847039963,
+        "levelId": 100112,
+        "levelNumber": 13,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-112-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-112-9",
+        "timestamp": 1761846919963,
+        "levelId": 100112,
+        "levelNumber": 13
+      },
+      {
+        "answer": "queue-112-10",
+        "timestamp": 1761846859963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-112-11",
+        "timestamp": 1761846799963,
+        "levelId": 100112,
+        "levelNumber": 13
+      },
+      {
+        "answer": "queue-112-12",
+        "timestamp": 1761846739963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-112-13",
+        "timestamp": 1761846679963,
+        "levelId": 100112,
+        "levelNumber": 13,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-112-14",
+        "timestamp": 1761846619963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-112-15",
+        "timestamp": 1761846559963,
+        "levelId": 100112,
+        "levelNumber": 13
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100112,
+      "levelNumber": 13,
+      "timestamp": 1761846872092
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": false,
+    "createdAt": 1752170599963,
+    "updatedAt": 1761444199963
+  },
+  "telegram::tg000113": {
+    "platform": "telegram",
+    "userId": "tg000113",
+    "login": "telegram_user_113",
+    "password": "enc:v1:dummy:113:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50113",
+    "authCookies": {
+      "GUID": "guid-113",
+      "stoken": "stoken-113",
+      "atoken": "atoken-113"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100113,
+      "levelNumber": 14,
+      "timestamp": 1761846872848
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1752084199963,
+    "updatedAt": 1761440599963
+  },
+  "vk::vk000114": {
+    "platform": "vk",
+    "userId": "vk000114",
+    "login": "vk_user_114",
+    "password": "enc:v1:dummy:114:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50114",
+    "authCookies": {
+      "GUID": "guid-114",
+      "stoken": "stoken-114",
+      "atoken": "atoken-114"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100114,
+      "levelNumber": 15,
+      "timestamp": 1761847166675
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1751997799963,
+    "updatedAt": 1761436999963
+  },
+  "telegram::tg000115": {
+    "platform": "telegram",
+    "userId": "tg000115",
+    "login": "telegram_user_115",
+    "password": "enc:v1:dummy:115:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50115",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100115,
+      "levelNumber": 16,
+      "timestamp": 1761846987389
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1751911399963,
+    "updatedAt": 1761433399963
+  },
+  "telegram::tg000116": {
+    "platform": "telegram",
+    "userId": "tg000116",
+    "login": "telegram_user_116",
+    "password": "enc:v1:dummy:116:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50116",
+    "authCookies": {
+      "GUID": "guid-116",
+      "stoken": "stoken-116",
+      "atoken": "atoken-116"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100116,
+      "levelNumber": 17,
+      "timestamp": 1761847282985
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": false,
+    "createdAt": 1751824999963,
+    "updatedAt": 1761429799963
+  },
+  "vk::vk000117": {
+    "platform": "vk",
+    "userId": "vk000117",
+    "login": "vk_user_117",
+    "password": "enc:v1:dummy:117:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50117",
+    "authCookies": {
+      "GUID": "guid-117",
+      "stoken": "stoken-117",
+      "atoken": "atoken-117"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-117-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-117-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-117-3",
+        "timestamp": 1761847309963
+      },
+      {
+        "answer": "acc-117-4",
+        "timestamp": 1761847264963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100117,
+      "levelNumber": 18,
+      "timestamp": 1761846887637
+    },
+    "accumulationStartLevel": {
+      "levelId": 100117,
+      "levelNumber": 18
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1751738599963,
+    "updatedAt": 1761426199963,
+    "pendingAnswerDecision": {
+      "answer": "pending-117",
+      "oldLevel": 18,
+      "newLevel": 19
+    }
+  },
+  "telegram::tg000118": {
+    "platform": "telegram",
+    "userId": "tg000118",
+    "login": "telegram_user_118",
+    "password": "enc:v1:dummy:118:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50118",
+    "authCookies": {
+      "GUID": "guid-118",
+      "stoken": "stoken-118",
+      "atoken": "atoken-118"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100118,
+      "levelNumber": 19,
+      "timestamp": 1761846974378
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1751652199963,
+    "updatedAt": 1761422599963
+  },
+  "telegram::tg000119": {
+    "platform": "telegram",
+    "userId": "tg000119",
+    "login": "telegram_user_119",
+    "password": "enc:v1:dummy:119:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50119",
+    "authCookies": {
+      "GUID": "guid-119",
+      "stoken": "stoken-119",
+      "atoken": "atoken-119"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-119-1",
+        "timestamp": 1761847399963,
+        "levelId": 100119,
+        "levelNumber": 20,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-119-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-119-3",
+        "timestamp": 1761847279963,
+        "levelId": 100119,
+        "levelNumber": 20
+      },
+      {
+        "answer": "queue-119-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-119-5",
+        "timestamp": 1761847159963,
+        "levelId": 100119,
+        "levelNumber": 20
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100119,
+      "levelNumber": 20,
+      "timestamp": 1761847273897
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1751565799963,
+    "updatedAt": 1761418999963
+  },
+  "vk::vk000120": {
+    "platform": "vk",
+    "userId": "vk000120",
+    "login": "vk_user_120",
+    "password": "enc:v1:dummy:120:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50120",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-120-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-120-1"
+      },
+      {
+        "answer": "burst-120-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-120-2"
+      },
+      {
+        "answer": "burst-120-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-120-3"
+      },
+      {
+        "answer": "burst-120-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-120-4"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100120,
+      "levelNumber": 21,
+      "timestamp": 1761847224294
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": false,
+    "createdAt": 1751479399963,
+    "updatedAt": 1761415399963
+  },
+  "telegram::tg000121": {
+    "platform": "telegram",
+    "userId": "tg000121",
+    "login": "telegram_user_121",
+    "password": "enc:v1:dummy:121:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50121",
+    "authCookies": {
+      "GUID": "guid-121",
+      "stoken": "stoken-121",
+      "atoken": "atoken-121"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100121,
+      "levelNumber": 22,
+      "timestamp": 1761847273902
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1751392999963,
+    "updatedAt": 1761411799963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 22,
+      "newLevelNumber": 23,
+      "queueSize": 5
+    }
+  },
+  "telegram::tg000122": {
+    "platform": "telegram",
+    "userId": "tg000122",
+    "login": "telegram_user_122",
+    "password": "enc:v1:dummy:122:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50122",
+    "authCookies": {
+      "GUID": "guid-122",
+      "stoken": "stoken-122",
+      "atoken": "atoken-122"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100122,
+      "levelNumber": 23,
+      "timestamp": 1761847132823
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1751306599963,
+    "updatedAt": 1761408199963
+  },
+  "vk::vk000123": {
+    "platform": "vk",
+    "userId": "vk000123",
+    "login": "vk_user_123",
+    "password": "enc:v1:dummy:123:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50123",
+    "authCookies": {
+      "GUID": "guid-123",
+      "stoken": "stoken-123",
+      "atoken": "atoken-123"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100123,
+      "levelNumber": 24,
+      "timestamp": 1761847328927
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1751220199963,
+    "updatedAt": 1761404599963
+  },
+  "telegram::tg000124": {
+    "platform": "telegram",
+    "userId": "tg000124",
+    "login": "telegram_user_124",
+    "password": "enc:v1:dummy:124:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50124",
+    "authCookies": {
+      "GUID": "guid-124",
+      "stoken": "stoken-124",
+      "atoken": "atoken-124"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100124,
+      "levelNumber": 25,
+      "timestamp": 1761847196935
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": false,
+    "createdAt": 1751133799963,
+    "updatedAt": 1761400999963
+  },
+  "telegram::tg000125": {
+    "platform": "telegram",
+    "userId": "tg000125",
+    "login": "telegram_user_125",
+    "password": "enc:v1:dummy:125:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50125",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100125,
+      "levelNumber": 26,
+      "timestamp": 1761846940366
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1751047399963,
+    "updatedAt": 1761397399963
+  },
+  "vk::vk000126": {
+    "platform": "vk",
+    "userId": "vk000126",
+    "login": "vk_user_126",
+    "password": "enc:v1:dummy:126:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50126",
+    "authCookies": {
+      "GUID": "guid-126",
+      "stoken": "stoken-126",
+      "atoken": "atoken-126"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-126-1",
+        "timestamp": 1761847399963,
+        "levelId": 100126,
+        "levelNumber": 27,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-126-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-126-3",
+        "timestamp": 1761847279963,
+        "levelId": 100126,
+        "levelNumber": 27
+      },
+      {
+        "answer": "queue-126-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-126-5",
+        "timestamp": 1761847159963,
+        "levelId": 100126,
+        "levelNumber": 27
+      },
+      {
+        "answer": "queue-126-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-126-7",
+        "timestamp": 1761847039963,
+        "levelId": 100126,
+        "levelNumber": 27,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      }
+    ],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-126-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-126-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-126-3",
+        "timestamp": 1761847309963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100126,
+      "levelNumber": 27,
+      "timestamp": 1761847309964
+    },
+    "accumulationStartLevel": {
+      "levelId": 100126,
+      "levelNumber": 27
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963,
+      1761847391963
+    ],
+    "isOnline": true,
+    "createdAt": 1750960999963,
+    "updatedAt": 1761393799963
+  },
+  "telegram::tg000127": {
+    "platform": "telegram",
+    "userId": "tg000127",
+    "login": "telegram_user_127",
+    "password": "enc:v1:dummy:127:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50127",
+    "authCookies": {
+      "GUID": "guid-127",
+      "stoken": "stoken-127",
+      "atoken": "atoken-127"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100127,
+      "levelNumber": 28,
+      "timestamp": 1761846927378
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1750874599963,
+    "updatedAt": 1761390199963
+  },
+  "telegram::tg000128": {
+    "platform": "telegram",
+    "userId": "tg000128",
+    "login": "telegram_user_128",
+    "password": "enc:v1:dummy:128:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50128",
+    "authCookies": {
+      "GUID": "guid-128",
+      "stoken": "stoken-128",
+      "atoken": "atoken-128"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100128,
+      "levelNumber": 29,
+      "timestamp": 1761847231924
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": false,
+    "createdAt": 1750788199963,
+    "updatedAt": 1761386599963
+  },
+  "vk::vk000129": {
+    "platform": "vk",
+    "userId": "vk000129",
+    "login": "vk_user_129",
+    "password": "enc:v1:dummy:129:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50129",
+    "authCookies": {
+      "GUID": "guid-129",
+      "stoken": "stoken-129",
+      "atoken": "atoken-129"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100129,
+      "levelNumber": 30,
+      "timestamp": 1761846941677
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1750701799963,
+    "updatedAt": 1761382999963
+  },
+  "telegram::tg000130": {
+    "platform": "telegram",
+    "userId": "tg000130",
+    "login": "telegram_user_130",
+    "password": "enc:v1:dummy:130:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50130",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-130-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-130-1"
+      },
+      {
+        "answer": "burst-130-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-130-2"
+      },
+      {
+        "answer": "burst-130-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-130-3"
+      },
+      {
+        "answer": "burst-130-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-130-4"
+      },
+      {
+        "answer": "burst-130-5",
+        "timestamp": 1761847387963,
+        "progressMessageId": "msg-130-5"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100130,
+      "levelNumber": 31,
+      "timestamp": 1761847000401
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1750615399963,
+    "updatedAt": 1761379399963,
+    "pendingAnswerDecision": {
+      "answer": "pending-130",
+      "oldLevel": 31,
+      "newLevel": 32
+    }
+  },
+  "telegram::tg000131": {
+    "platform": "telegram",
+    "userId": "tg000131",
+    "login": "telegram_user_131",
+    "password": "enc:v1:dummy:131:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50131",
+    "authCookies": {
+      "GUID": "guid-131",
+      "stoken": "stoken-131",
+      "atoken": "atoken-131"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100131,
+      "levelNumber": 32,
+      "timestamp": 1761847269956
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1750528999963,
+    "updatedAt": 1761375799963
+  },
+  "vk::vk000132": {
+    "platform": "vk",
+    "userId": "vk000132",
+    "login": "vk_user_132",
+    "password": "enc:v1:dummy:132:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50132",
+    "authCookies": {
+      "GUID": "guid-132",
+      "stoken": "stoken-132",
+      "atoken": "atoken-132"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100132,
+      "levelNumber": 33,
+      "timestamp": 1761847023607
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": false,
+    "createdAt": 1750442599963,
+    "updatedAt": 1761372199963,
+    "pendingQueueDecision": {
+      "oldLevelNumber": 33,
+      "newLevelNumber": 34,
+      "queueSize": 8
+    }
+  },
+  "telegram::tg000133": {
+    "platform": "telegram",
+    "userId": "tg000133",
+    "login": "telegram_user_133",
+    "password": "enc:v1:dummy:133:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50133",
+    "authCookies": {
+      "GUID": "guid-133",
+      "stoken": "stoken-133",
+      "atoken": "atoken-133"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-133-1",
+        "timestamp": 1761847399963,
+        "levelId": 100133,
+        "levelNumber": 34,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-133-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-133-3",
+        "timestamp": 1761847279963,
+        "levelId": 100133,
+        "levelNumber": 34
+      },
+      {
+        "answer": "queue-133-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-133-5",
+        "timestamp": 1761847159963,
+        "levelId": 100133,
+        "levelNumber": 34
+      },
+      {
+        "answer": "queue-133-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-133-7",
+        "timestamp": 1761847039963,
+        "levelId": 100133,
+        "levelNumber": 34,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-133-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-133-9",
+        "timestamp": 1761846919963,
+        "levelId": 100133,
+        "levelNumber": 34
+      },
+      {
+        "answer": "queue-133-10",
+        "timestamp": 1761846859963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-133-11",
+        "timestamp": 1761846799963,
+        "levelId": 100133,
+        "levelNumber": 34
+      },
+      {
+        "answer": "queue-133-12",
+        "timestamp": 1761846739963,
+        "levelId": null,
+        "levelNumber": null
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100133,
+      "levelNumber": 34,
+      "timestamp": 1761847302970
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1750356199963,
+    "updatedAt": 1761368599963
+  },
+  "telegram::tg000134": {
+    "platform": "telegram",
+    "userId": "tg000134",
+    "login": "telegram_user_134",
+    "password": "enc:v1:dummy:134:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50134",
+    "authCookies": {
+      "GUID": "guid-134",
+      "stoken": "stoken-134",
+      "atoken": "atoken-134"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100134,
+      "levelNumber": 35,
+      "timestamp": 1761846950853
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1750269799963,
+    "updatedAt": 1761364999963
+  },
+  "vk::vk000135": {
+    "platform": "vk",
+    "userId": "vk000135",
+    "login": "vk_user_135",
+    "password": "enc:v1:dummy:135:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50135",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-135-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-135-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-135-3",
+        "timestamp": 1761847309963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100135,
+      "levelNumber": 36,
+      "timestamp": 1761846881217
+    },
+    "accumulationStartLevel": {
+      "levelId": 100135,
+      "levelNumber": 36
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1750183399963,
+    "updatedAt": 1761361399963
+  },
+  "telegram::tg000136": {
+    "platform": "telegram",
+    "userId": "tg000136",
+    "login": "telegram_user_136",
+    "password": "enc:v1:dummy:136:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50136",
+    "authCookies": {
+      "GUID": "guid-136",
+      "stoken": "stoken-136",
+      "atoken": "atoken-136"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100136,
+      "levelNumber": 37,
+      "timestamp": 1761847246396
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": false,
+    "createdAt": 1750096999963,
+    "updatedAt": 1761357799963
+  },
+  "telegram::tg000137": {
+    "platform": "telegram",
+    "userId": "tg000137",
+    "login": "telegram_user_137",
+    "password": "enc:v1:dummy:137:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50137",
+    "authCookies": {
+      "GUID": "guid-137",
+      "stoken": "stoken-137",
+      "atoken": "atoken-137"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100137,
+      "levelNumber": 38,
+      "timestamp": 1761847199657
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1750010599963,
+    "updatedAt": 1761354199963
+  },
+  "vk::vk000138": {
+    "platform": "vk",
+    "userId": "vk000138",
+    "login": "vk_user_138",
+    "password": "enc:v1:dummy:138:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50138",
+    "authCookies": {
+      "GUID": "guid-138",
+      "stoken": "stoken-138",
+      "atoken": "atoken-138"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100138,
+      "levelNumber": 39,
+      "timestamp": 1761847237018
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1749924199963,
+    "updatedAt": 1761350599963
+  },
+  "telegram::tg000139": {
+    "platform": "telegram",
+    "userId": "tg000139",
+    "login": "telegram_user_139",
+    "password": "enc:v1:dummy:139:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50139",
+    "authCookies": {
+      "GUID": "guid-139",
+      "stoken": "stoken-139",
+      "atoken": "atoken-139"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100139,
+      "levelNumber": 40,
+      "timestamp": 1761846844230
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1749837799963,
+    "updatedAt": 1761346999963
+  },
+  "telegram::tg000140": {
+    "platform": "telegram",
+    "userId": "tg000140",
+    "login": "telegram_user_140",
+    "password": "enc:v1:dummy:140:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50140",
+    "authCookies": {},
+    "answerQueue": [
+      {
+        "answer": "queue-140-1",
+        "timestamp": 1761847399963,
+        "levelId": 100140,
+        "levelNumber": 41,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-140-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-140-3",
+        "timestamp": 1761847279963,
+        "levelId": 100140,
+        "levelNumber": 41
+      },
+      {
+        "answer": "queue-140-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-140-5",
+        "timestamp": 1761847159963,
+        "levelId": 100140,
+        "levelNumber": 41
+      },
+      {
+        "answer": "queue-140-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-140-7",
+        "timestamp": 1761847039963,
+        "levelId": 100140,
+        "levelNumber": 41,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-140-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-140-9",
+        "timestamp": 1761846919963,
+        "levelId": 100140,
+        "levelNumber": 41
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-140-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-140-1"
+      },
+      {
+        "answer": "burst-140-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-140-2"
+      },
+      {
+        "answer": "burst-140-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-140-3"
+      },
+      {
+        "answer": "burst-140-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-140-4"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100140,
+      "levelNumber": 41,
+      "timestamp": 1761846935328
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": false,
+    "createdAt": 1749751399963,
+    "updatedAt": 1761343399963
+  },
+  "vk::vk000141": {
+    "platform": "vk",
+    "userId": "vk000141",
+    "login": "vk_user_141",
+    "password": "enc:v1:dummy:141:payload",
+    "domain": "https://city2.en.cx",
+    "gameId": "50141",
+    "authCookies": {
+      "GUID": "guid-141",
+      "stoken": "stoken-141",
+      "atoken": "atoken-141"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100141,
+      "levelNumber": 42,
+      "timestamp": 1761846807739
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": true,
+    "createdAt": 1749664999963,
+    "updatedAt": 1761339799963
+  },
+  "telegram::tg000142": {
+    "platform": "telegram",
+    "userId": "tg000142",
+    "login": "telegram_user_142",
+    "password": "enc:v1:dummy:142:payload",
+    "domain": "https://city3.en.cx",
+    "gameId": "50142",
+    "authCookies": {
+      "GUID": "guid-142",
+      "stoken": "stoken-142",
+      "atoken": "atoken-142"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100142,
+      "levelNumber": 43,
+      "timestamp": 1761847036098
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1749578599963,
+    "updatedAt": 1761336199963
+  },
+  "telegram::tg000143": {
+    "platform": "telegram",
+    "userId": "tg000143",
+    "login": "telegram_user_143",
+    "password": "enc:v1:dummy:143:payload",
+    "domain": "https://city4.en.cx",
+    "gameId": "50143",
+    "authCookies": {
+      "GUID": "guid-143",
+      "stoken": "stoken-143",
+      "atoken": "atoken-143"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100143,
+      "levelNumber": 44,
+      "timestamp": 1761847309729
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1749492199963,
+    "updatedAt": 1761332599963,
+    "pendingAnswerDecision": {
+      "answer": "pending-143",
+      "oldLevel": 44,
+      "newLevel": 45
+    },
+    "pendingQueueDecision": {
+      "oldLevelNumber": 44,
+      "newLevelNumber": 45,
+      "queueSize": 8
+    }
+  },
+  "vk::vk000144": {
+    "platform": "vk",
+    "userId": "vk000144",
+    "login": "vk_user_144",
+    "password": "enc:v1:dummy:144:payload",
+    "domain": "https://city5.en.cx",
+    "gameId": "50144",
+    "authCookies": {
+      "GUID": "guid-144",
+      "stoken": "stoken-144",
+      "atoken": "atoken-144"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [
+      {
+        "answer": "acc-144-1",
+        "timestamp": 1761847399963
+      },
+      {
+        "answer": "acc-144-2",
+        "timestamp": 1761847354963
+      },
+      {
+        "answer": "acc-144-3",
+        "timestamp": 1761847309963
+      },
+      {
+        "answer": "acc-144-4",
+        "timestamp": 1761847264963
+      }
+    ],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100144,
+      "levelNumber": 45,
+      "timestamp": 1761847057330
+    },
+    "accumulationStartLevel": {
+      "levelId": 100144,
+      "levelNumber": 45
+    },
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963
+    ],
+    "isOnline": false,
+    "createdAt": 1749405799963,
+    "updatedAt": 1761328999963
+  },
+  "telegram::tg000145": {
+    "platform": "telegram",
+    "userId": "tg000145",
+    "login": "telegram_user_145",
+    "password": "enc:v1:dummy:145:payload",
+    "domain": "https://city6.en.cx",
+    "gameId": "50145",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100145,
+      "levelNumber": 46,
+      "timestamp": 1761847014574
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1749319399963,
+    "updatedAt": 1761325399963
+  },
+  "telegram::tg000146": {
+    "platform": "telegram",
+    "userId": "tg000146",
+    "login": "telegram_user_146",
+    "password": "enc:v1:dummy:146:payload",
+    "domain": "https://city7.en.cx",
+    "gameId": "50146",
+    "authCookies": {
+      "GUID": "guid-146",
+      "stoken": "stoken-146",
+      "atoken": "atoken-146"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100146,
+      "levelNumber": 47,
+      "timestamp": 1761846967090
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963
+    ],
+    "isOnline": true,
+    "createdAt": 1749232999963,
+    "updatedAt": 1761321799963
+  },
+  "vk::vk000147": {
+    "platform": "vk",
+    "userId": "vk000147",
+    "login": "vk_user_147",
+    "password": "enc:v1:dummy:147:payload",
+    "domain": "https://city8.en.cx",
+    "gameId": "50147",
+    "authCookies": {
+      "GUID": "guid-147",
+      "stoken": "stoken-147",
+      "atoken": "atoken-147"
+    },
+    "answerQueue": [
+      {
+        "answer": "queue-147-1",
+        "timestamp": 1761847399963,
+        "levelId": 100147,
+        "levelNumber": 48,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-147-2",
+        "timestamp": 1761847339963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-147-3",
+        "timestamp": 1761847279963,
+        "levelId": 100147,
+        "levelNumber": 48
+      },
+      {
+        "answer": "queue-147-4",
+        "timestamp": 1761847219963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-147-5",
+        "timestamp": 1761847159963,
+        "levelId": 100147,
+        "levelNumber": 48
+      },
+      {
+        "answer": "queue-147-6",
+        "timestamp": 1761847099963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-147-7",
+        "timestamp": 1761847039963,
+        "levelId": 100147,
+        "levelNumber": 48,
+        "failedAttempts": 0,
+        "lastError": "Сетевая ошибка"
+      },
+      {
+        "answer": "queue-147-8",
+        "timestamp": 1761846979963,
+        "levelId": null,
+        "levelNumber": null
+      },
+      {
+        "answer": "queue-147-9",
+        "timestamp": 1761846919963,
+        "levelId": 100147,
+        "levelNumber": 48
+      }
+    ],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100147,
+      "levelNumber": 48,
+      "timestamp": 1761846843003
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963,
+      1761847395963,
+      1761847393963
+    ],
+    "isOnline": true,
+    "createdAt": 1749146599963,
+    "updatedAt": 1761318199963
+  },
+  "telegram::tg000148": {
+    "platform": "telegram",
+    "userId": "tg000148",
+    "login": "telegram_user_148",
+    "password": "enc:v1:dummy:148:payload",
+    "domain": "https://city9.en.cx",
+    "gameId": "50148",
+    "authCookies": {
+      "GUID": "guid-148",
+      "stoken": "stoken-148",
+      "atoken": "atoken-148"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100148,
+      "levelNumber": 49,
+      "timestamp": 1761846800602
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": false,
+    "createdAt": 1749060199963,
+    "updatedAt": 1761314599963
+  },
+  "telegram::tg000149": {
+    "platform": "telegram",
+    "userId": "tg000149",
+    "login": "telegram_user_149",
+    "password": "enc:v1:dummy:149:payload",
+    "domain": "https://city10.en.cx",
+    "gameId": "50149",
+    "authCookies": {
+      "GUID": "guid-149",
+      "stoken": "stoken-149",
+      "atoken": "atoken-149"
+    },
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [],
+    "lastKnownLevel": {
+      "levelId": 100149,
+      "levelNumber": 50,
+      "timestamp": 1761846921926
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [
+      1761847399963,
+      1761847397963
+    ],
+    "isOnline": true,
+    "createdAt": 1748973799963,
+    "updatedAt": 1761310999963
+  },
+  "vk::vk000150": {
+    "platform": "vk",
+    "userId": "vk000150",
+    "login": "vk_user_150",
+    "password": "enc:v1:dummy:150:payload",
+    "domain": "https://city1.en.cx",
+    "gameId": "50150",
+    "authCookies": {},
+    "answerQueue": [],
+    "accumulatedAnswers": [],
+    "pendingBurstAnswers": [
+      {
+        "answer": "burst-150-1",
+        "timestamp": 1761847399963,
+        "progressMessageId": "msg-150-1"
+      },
+      {
+        "answer": "burst-150-2",
+        "timestamp": 1761847396963,
+        "progressMessageId": "msg-150-2"
+      },
+      {
+        "answer": "burst-150-3",
+        "timestamp": 1761847393963,
+        "progressMessageId": "msg-150-3"
+      },
+      {
+        "answer": "burst-150-4",
+        "timestamp": 1761847390963,
+        "progressMessageId": "msg-150-4"
+      },
+      {
+        "answer": "burst-150-5",
+        "timestamp": 1761847387963,
+        "progressMessageId": "msg-150-5"
+      }
+    ],
+    "lastKnownLevel": {
+      "levelId": 100150,
+      "levelNumber": 1,
+      "timestamp": 1761847103472
+    },
+    "accumulationStartLevel": null,
+    "recentMessageTimestamps": [],
+    "isOnline": true,
+    "createdAt": 1748887399963,
+    "updatedAt": 1761307399963
+  }
+}

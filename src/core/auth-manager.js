@@ -3,6 +3,8 @@
  * Используется для предотвращения параллельных авторизаций
  */
 
+const { logger } = require('../infra/logger');
+
 /**
  * Централизованная функция авторизации с мьютексом
  * Используется для ВСЕХ вызовов API (sendAnswer, getGameState, и т.д.)
@@ -14,9 +16,9 @@
 async function ensureAuthenticated(user, EncounterAPI, saveUserData) {
   // Мьютекс авторизации: если уже идет авторизация, ждем её завершения
   if (user.isAuthenticating && user.authPromise) {
-    console.log(`⏳ Ожидание завершения авторизации для ${user.login}...`);
+    logger.info(`⏳ Ожидание завершения авторизации для ${user.login}...`);
     await user.authPromise;
-    console.log(`✅ Авторизация завершена, используем обновленные cookies`);
+    logger.info(`✅ Авторизация завершена, используем обновленные cookies`);
     return user.authCookies;
   }
 
@@ -26,15 +28,15 @@ async function ensureAuthenticated(user, EncounterAPI, saveUserData) {
       await user.authPromise;
       // После ожидания cookies должны быть
       if (user.authCookies && Object.keys(user.authCookies).length > 0) {
-        console.log(`🔑 Используем cookies после ожидания авторизации`);
+        logger.info(`🔑 Используем cookies после ожидания авторизации`);
         return user.authCookies;
       }
     }
 
     // Если все еще нет cookies, запускаем авторизацию
     if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
-      console.log(`🔐 Нет cookies, выполняем авторизацию для ${user.login}...`);
-      console.log(`🎮 Данные игры: домен=${user.domain}, ID=${user.gameId}`);
+      logger.info(`🔐 Нет cookies, выполняем авторизацию для ${user.login}...`);
+      logger.info(`🎮 Данные игры: домен=${user.domain}, ID=${user.gameId}`);
 
       // Устанавливаем флаг авторизации
       user.isAuthenticating = true;
@@ -52,7 +54,7 @@ async function ensureAuthenticated(user, EncounterAPI, saveUserData) {
         if (authResult.success) {
           user.authCookies = authResult.cookies;
           await saveUserData();
-          console.log(`✅ Авторизация успешна для ${user.login}`);
+          logger.info(`✅ Авторизация успешна для ${user.login}`);
           resolveAuth();
           return user.authCookies;
         } else {
@@ -69,7 +71,7 @@ async function ensureAuthenticated(user, EncounterAPI, saveUserData) {
       }
     }
   } else {
-    console.log(`🔑 Используем сохраненные cookies для ${user.login}`);
+    logger.info(`🔑 Используем сохраненные cookies для ${user.login}`);
   }
 
   return user.authCookies;
@@ -85,7 +87,7 @@ async function ensureAuthenticated(user, EncounterAPI, saveUserData) {
  */
 async function createAuthCallback(user, EncounterAPI, saveUserData) {
   return async () => {
-    console.log(`🔄 Запрос на реаутентификацию через callback для ${user.login}...`);
+    logger.info(`🔄 Запрос на реаутентификацию через callback для ${user.login}...`);
     const cookies = await ensureAuthenticated(user, EncounterAPI, saveUserData);
     return { success: true, cookies };
   };

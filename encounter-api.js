@@ -1,6 +1,7 @@
 const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
+const { logger } = require('./src/infra/logger');
 
 // Класс для работы с API Encounter
 class EncounterAPI {
@@ -39,7 +40,7 @@ class EncounterAPI {
 
       if (elapsed < 1200) {
         const waitTime = 1200 - elapsed;
-        console.log(`⏱️ Rate limit: жду ${waitTime}ms перед запросом к ${domain}`);
+        logger.info(`⏱️ Rate limit: жду ${waitTime}ms перед запросом к ${domain}`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
 
@@ -67,9 +68,9 @@ class EncounterAPI {
       await fs.ensureDir(path.join(__dirname, 'error_logs'));
       await fs.writeFile(filepath, htmlContent);
 
-      console.log(`💾 HTML ошибка сохранена: ${filepath}`);
+      logger.info(`💾 HTML ошибка сохранена: ${filepath}`);
     } catch (error) {
-      console.error('❌ Не удалось сохранить HTML ошибку:', error.message);
+      logger.error('❌ Не удалось сохранить HTML ошибку:', error.message);
     }
   }
 
@@ -103,7 +104,7 @@ class EncounterAPI {
     // Кеш действителен 30 секунд
     const age = Date.now() - cached.timestamp;
     if (age > 30000) {
-      console.log(`🗑️ Кеш уровня устарел (${Math.floor(age / 1000)}с), удаляем`);
+      logger.info(`🗑️ Кеш уровня устарел (${Math.floor(age / 1000)}с), удаляем`);
       delete EncounterAPI.levelCache[cacheKey];
       return null;
     }
@@ -120,7 +121,7 @@ class EncounterAPI {
       isPassed: levelData.IsPassed || false,
       timestamp: Date.now()
     };
-    console.log(`📦 Кеш уровня сохранён: №${levelData.Number} (LevelId: ${levelData.LevelId})`);
+    logger.info(`📦 Кеш уровня сохранён: №${levelData.Number} (LevelId: ${levelData.LevelId})`);
   }
 
   // Инвалидировать кеш уровня
@@ -146,7 +147,9 @@ class EncounterAPI {
       delete EncounterAPI.levelCache[key];
     }
 
-    console.log(`🗑️ Кеш уровня инвалидирован${reason ? ': ' + reason : ''} (${keysToRemove.length})`);
+    logger.info(
+      `🗑️ Кеш уровня инвалидирован${reason ? ': ' + reason : ''} (${keysToRemove.length})`
+    );
   }
 
   // Авторизация пользователя по официальному API Encounter
@@ -173,23 +176,25 @@ class EncounterAPI {
 
       // Валидация ответа: проверяем что это JSON объект, а не HTML страница
       if (typeof result !== 'object' || result === null) {
-        console.error('❌ API вернул не объект:', typeof result);
-        console.error('📄 Первые 500 символов ответа:', String(result).substring(0, 500));
+        logger.error('❌ API вернул не объект:', typeof result);
+        logger.error('📄 Первые 500 символов ответа:', String(result).substring(0, 500));
 
         // Проверяем является ли это HTML страницей
         const resultStr = String(result);
         if (resultStr.includes('<html') || resultStr.includes('<!DOCTYPE')) {
-          console.error('🚫 Encounter вернул HTML - IP заблокирован или требуется капча');
+          logger.error('🚫 Encounter вернул HTML - IP заблокирован или требуется капча');
           await this._saveErrorHtml(resultStr, 'auth-blocked');
-          throw new Error('IP заблокирован Encounter - слишком много запросов. Подождите 5-10 минут.');
+          throw new Error(
+            'IP заблокирован Encounter - слишком много запросов. Подождите 5-10 минут.'
+          );
         }
 
         throw new Error('API вернул некорректный формат данных (не JSON объект)');
       }
 
       if (result.Error === undefined || result.Error === null) {
-        console.error('❌ API вернул ответ без поля Error');
-        console.error('📄 Полный ответ:', JSON.stringify(result, null, 2).substring(0, 1000));
+        logger.error('❌ API вернул ответ без поля Error');
+        logger.error('📄 Полный ответ:', JSON.stringify(result, null, 2).substring(0, 1000));
         throw new Error('Некорректный ответ от сервера - отсутствует поле Error');
       }
 
@@ -197,7 +202,7 @@ class EncounterAPI {
         // Сохраняем куки для последующих запросов
         const cookies = response.headers['set-cookie'];
         let authCookies = {};
-        
+
         if (cookies) {
           cookies.forEach(cookie => {
             const [nameValue] = cookie.split(';');
@@ -207,7 +212,7 @@ class EncounterAPI {
             }
           });
         }
-        
+
         return {
           success: true,
           cookies: authCookies,
@@ -225,22 +230,22 @@ class EncounterAPI {
           9: 'Действия расценены как брутфорс',
           10: 'E-Mail не подтвержден'
         };
-        
+
         let message = errorMessages[result.Error] || `Ошибка авторизации (код ${result.Error})`;
-        
+
         // Если есть URL капчи, добавляем его к сообщению
         if (result.Error === 1 && result.CaptchaUrl) {
           message += `\n\n🔗 Ссылка для прохождения капчи:\n${result.CaptchaUrl}`;
         }
-        
+
         return {
           success: false,
           message: message
         };
       }
     } catch (error) {
-      console.error('Ошибка авторизации:', error.message);
-      
+      logger.error('Ошибка авторизации:', error.message);
+
       // Детальная обработка HTTP ошибок
       if (error.response) {
         const status = error.response.status;
@@ -252,7 +257,7 @@ class EncounterAPI {
           500: 'Ошибка сервера Encounter',
           503: 'Сервер Encounter временно недоступен'
         };
-        
+
         return {
           success: false,
           message: statusMessages[status] || `HTTP ошибка ${status}: ${error.message}`
@@ -287,21 +292,21 @@ class EncounterAPI {
         .join('; ');
 
       const url = `${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`;
-      console.log(`🌐 Запрос состояния игры:`);
-      console.log(`   URL: ${url}`);
-      console.log(`   GameID: ${gameId}`);
-      console.log(`   Domain: ${this.domain}`);
-      console.log(`   Cookies: ${cookieString.substring(0, 100)}...`);
+      logger.info(`🌐 Запрос состояния игры:`);
+      logger.info(`   URL: ${url}`);
+      logger.info(`   GameID: ${gameId}`);
+      logger.info(`   Domain: ${this.domain}`);
+      logger.info(`   Cookies: ${cookieString.substring(0, 100)}...`);
 
       const response = await axios.get(url, {
         timeout: this.timeout,
         headers: {
-          'Cookie': cookieString,
+          Cookie: cookieString,
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
       });
 
-      console.log(`✅ Успешный ответ от API, статус: ${response.status}`);
+      logger.info(`✅ Успешный ответ от API, статус: ${response.status}`);
 
       const data = response.data;
 
@@ -326,35 +331,43 @@ class EncounterAPI {
     } catch (error) {
       // Если сессия истекла И есть данные для реаутентификации И это не повторная попытка
       if (error.needsAuth && login && password && !isRetry) {
-        console.log(`🔄 Сессия истекла, выполняю автоматическую реаутентификацию для ${login}...`);
+        logger.info(`🔄 Сессия истекла, выполняю автоматическую реаутентификацию для ${login}...`);
 
         try {
           let authResult;
 
           // Используем authCallback если он есть (с мьютексом), иначе прямую авторизацию
           if (this.authCallback) {
-            console.log(`🔐 Использую централизованную авторизацию с мьютексом`);
+            logger.info(`🔐 Использую централизованную авторизацию с мьютексом`);
             authResult = await this.authCallback();
           } else {
-            console.log(`⚠️ Fallback: прямая авторизация без мьютекса`);
+            logger.info(`⚠️ Fallback: прямая авторизация без мьютекса`);
             authResult = await this.authenticate(login, password);
           }
 
           if (authResult.success) {
-            console.log(`✅ Автоматическая реаутентификация успешна, повторяю запрос...`);
+            logger.info(`✅ Автоматическая реаутентификация успешна, повторяю запрос...`);
             const mergedCookies = {
               ...(authCookies || {}),
               ...(authResult.cookies || {})
             };
             // Повторяем запрос с обновлёнными cookies (isRetry=true чтобы избежать бесконечной рекурсии)
-            const retryState = await this.getGameState(gameId, mergedCookies, login, password, true);
+            const retryState = await this.getGameState(
+              gameId,
+              mergedCookies,
+              login,
+              password,
+              true
+            );
             if (retryState && retryState.success) {
               retryState.newCookies = mergedCookies;
             }
             return retryState;
           } else {
             // Реаутентификация не удалась - пробрасываем ошибку дальше
-            const reAuthError = new Error(`Автоматическая реаутентификация не удалась: ${authResult.message}`);
+            const reAuthError = new Error(
+              `Автоматическая реаутентификация не удалась: ${authResult.message}`
+            );
             reAuthError.reAuthFailed = true;
             reAuthError.authMessage = authResult.message;
             throw reAuthError;
@@ -362,7 +375,9 @@ class EncounterAPI {
         } catch (authError) {
           // Ошибка при реаутентификации - пробрасываем дальше
           if (!authError.reAuthFailed) {
-            const wrappedError = new Error(`Ошибка автоматической реаутентификации: ${authError.message}`);
+            const wrappedError = new Error(
+              `Ошибка автоматической реаутентификации: ${authError.message}`
+            );
             wrappedError.reAuthFailed = true;
             throw wrappedError;
           }
@@ -370,17 +385,17 @@ class EncounterAPI {
         }
       }
 
-      console.error('❌ Ошибка получения состояния игры:', error.message);
+      logger.error('❌ Ошибка получения состояния игры:', error.message);
 
       // Детальная обработка HTTP ошибок
       if (error.response) {
         const status = error.response.status;
         const data = error.response.data;
 
-        console.log(`🔍 Детали HTTP ${status} ошибки:`);
-        console.log(`   Статус: ${status}`);
-        console.log(`   Данные ответа:`, JSON.stringify(data, null, 2));
-        console.log(`   Заголовки:`, JSON.stringify(error.response.headers, null, 2));
+        logger.info(`🔍 Детали HTTP ${status} ошибки:`);
+        logger.info(`   Статус: ${status}`);
+        logger.info(`   Данные ответа:`, JSON.stringify(data, null, 2));
+        logger.info(`   Заголовки:`, JSON.stringify(error.response.headers, null, 2));
 
         const statusMessages = {
           400: `Неправильный запрос HTTP 400. Возможные причины:
@@ -394,7 +409,9 @@ class EncounterAPI {
           500: 'Ошибка сервера Encounter'
         };
 
-        throw new Error(statusMessages[status] || `HTTP ошибка ${status} при получении состояния игры`);
+        throw new Error(
+          statusMessages[status] || `HTTP ошибка ${status} при получении состояния игры`
+        );
       } else if (error.code === 'ENOTFOUND') {
         throw new Error('Домен не найден - проверьте подключение к интернету');
       } else if (error.code === 'ETIMEDOUT') {
@@ -406,7 +423,15 @@ class EncounterAPI {
   }
 
   // Отправка ответа в игру по официальному API Encounter с автоматической реаутентификацией
-  async sendAnswer(gameId, answer, authCookies, login = null, password = null, isRetry = false, expectedLevelId = null) {
+  async sendAnswer(
+    gameId,
+    answer,
+    authCookies,
+    login = null,
+    password = null,
+    isRetry = false,
+    expectedLevelId = null
+  ) {
     try {
       // Проверяем наличие cookies авторизации
       if (!authCookies || Object.keys(authCookies).length === 0) {
@@ -419,10 +444,12 @@ class EncounterAPI {
 
       if (levelData) {
         // Используем кешированные данные
-        console.log(`📦 Используем кеш уровня №${levelData.levelNumber} (ID: ${levelData.levelId})`);
+        logger.info(
+          `📦 Используем кеш уровня №${levelData.levelNumber} (ID: ${levelData.levelId})`
+        );
       } else {
         // Кеша нет - получаем состояние игры (с автореаутентификацией)
-        console.log(`🔄 Кеша нет, получаем состояние игры для ${gameId}...`);
+        logger.info(`🔄 Кеша нет, получаем состояние игры для ${gameId}...`);
         const gameState = await this.getGameState(gameId, authCookies, login, password);
 
         if (!gameState.success) {
@@ -432,18 +459,24 @@ class EncounterAPI {
         model = gameState.data;
 
         // Проверяем если сервер вернул HTML вместо JSON (страница логина)
-        if (typeof model === 'string' && (model.includes('<html>') || model.includes('<!DOCTYPE'))) {
-          console.log(`🔒 Сервер перенаправил на страницу входа - сессия истекла`);
+        if (
+          typeof model === 'string' &&
+          (model.includes('<html>') || model.includes('<!DOCTYPE'))
+        ) {
+          logger.info(`🔒 Сервер перенаправил на страницу входа - сессия истекла`);
           throw new Error('Требуется повторная авторизация (сессия истекла)');
         }
 
         // Подробная проверка состояния игры согласно документации API
-        console.log(`🎮 Состояние игры: Event=${model.Event}, GameId=${gameId}`);
+        logger.info(`🎮 Состояние игры: Event=${model.Event}, GameId=${gameId}`);
 
         // Проверяем наличие Event в ответе
         if (model.Event === undefined || model.Event === null) {
-          console.log(`❌ Некорректный ответ сервера: Event не определен`);
-          console.log(`📄 Полный ответ (первые 500 символов):`, JSON.stringify(model, null, 2).substring(0, 500));
+          logger.info(`❌ Некорректный ответ сервера: Event не определен`);
+          logger.info(
+            `📄 Полный ответ (первые 500 символов):`,
+            JSON.stringify(model, null, 2).substring(0, 500)
+          );
           throw new Error('Сервер вернул некорректные данные (Event не определен)');
         }
 
@@ -468,8 +501,9 @@ class EncounterAPI {
             17: 'Игра закончена'
           };
 
-          const errorMsg = eventMessages[model.Event] || `Неизвестная ошибка игры (код ${model.Event})`;
-          console.log(`❌ Проблема с игрой: ${errorMsg}`);
+          const errorMsg =
+            eventMessages[model.Event] || `Неизвестная ошибка игры (код ${model.Event})`;
+          logger.info(`❌ Проблема с игрой: ${errorMsg}`);
 
           // Если уровень изменился - инвалидируем кеш
           if (model.Event === 16) {
@@ -480,17 +514,19 @@ class EncounterAPI {
         }
 
         const level = model.Level;
-        console.log(`📊 Состояние уровня: №${level.Number}, ID=${level.LevelId}, IsPassed=${level.IsPassed}`);
+        logger.info(
+          `📊 Состояние уровня: №${level.Number}, ID=${level.LevelId}, IsPassed=${level.IsPassed}`
+        );
 
         // Подробная проверка состояния уровня согласно документации API
         if (level.IsPassed) {
-          console.log(`✅ Уровень ${level.Number} уже пройден`);
+          logger.info(`✅ Уровень ${level.Number} уже пройден`);
           this._invalidateLevelCache(gameId, 'уровень пройден', null);
           throw new Error(`Уровень ${level.Number} уже пройден`);
         }
 
         if (level.Dismissed) {
-          console.log(`🚫 Уровень ${level.Number} снят администратором`);
+          logger.info(`🚫 Уровень ${level.Number} снят администратором`);
           this._invalidateLevelCache(gameId, 'уровень снят', null);
           throw new Error(`Уровень ${level.Number} снят администратором`);
         }
@@ -511,14 +547,20 @@ class EncounterAPI {
           const seconds = model.Level.BlockDuration % 60;
           const timeStr = minutes > 0 ? `${minutes}м ${seconds}с` : `${seconds}с`;
 
-          console.log(`⏰ Блокировка ответов на уровне ${levelData.levelNumber}: осталось ${timeStr}`);
-          throw new Error(`⏰ Блокировка ответов на уровне ${levelData.levelNumber}. Осталось: ${timeStr}`);
+          logger.info(
+            `⏰ Блокировка ответов на уровне ${levelData.levelNumber}: осталось ${timeStr}`
+          );
+          throw new Error(
+            `⏰ Блокировка ответов на уровне ${levelData.levelNumber}. Осталось: ${timeStr}`
+          );
         } else {
-          console.log(`ℹ️ На уровне ${levelData.levelNumber} настроена блокировка ответов, но сейчас не активна`);
+          logger.info(
+            `ℹ️ На уровне ${levelData.levelNumber} настроена блокировка ответов, но сейчас не активна`
+          );
         }
       }
 
-      console.log(`✅ Уровень ${levelData.levelNumber} готов к приему ответов`);
+      logger.info(`✅ Уровень ${levelData.levelNumber} готов к приему ответов`);
 
       // Определяем ожидаемый levelId для проверки
       const currentLevelIdFromState = levelData.levelId;
@@ -528,7 +570,9 @@ class EncounterAPI {
       // Иначе используем текущий из состояния
       const expectedLevelIdForCheck = expectedLevelId || currentLevelIdFromState;
 
-      console.log(`📋 Проверка уровня: ожидаемый=${expectedLevelIdForCheck}, текущий из API=${currentLevelIdFromState}`);
+      logger.info(
+        `📋 Проверка уровня: ожидаемый=${expectedLevelIdForCheck}, текущий из API=${currentLevelIdFromState}`
+      );
 
       // Формируем cookie строку
       const cookieString = Object.entries(authCookies)
@@ -536,26 +580,33 @@ class EncounterAPI {
         .join('; ');
 
       // Отправляем ответ согласно документации API
-      console.log(`📤 Отправляем ответ "${answer}" на уровень ${levelData.levelNumber} (LevelId: ${levelData.levelId})`);
+      logger.info(
+        `📤 Отправляем ответ "${answer}" на уровень ${levelData.levelNumber} (LevelId: ${levelData.levelId})`
+      );
 
       // ВАЖНО: Проверяем уровень ПЕРЕД отправкой (защита от смены уровня)
-      console.log(`🔍 Проверка актуальности уровня перед отправкой...`);
+      logger.info(`🔍 Проверка актуальности уровня перед отправкой...`);
       const verifyState = await this.getGameState(gameId, authCookies, login, password);
       if (verifyState.success && verifyState.data && verifyState.data.Level) {
         const currentLevelId = verifyState.data.Level.LevelId;
         const currentLevelNumber = verifyState.data.Level.Number;
 
-        console.log(`🔍 Финальная проверка: ожидаемый levelId=${expectedLevelIdForCheck}, текущий levelId=${currentLevelId}`);
+        logger.info(
+          `🔍 Финальная проверка: ожидаемый levelId=${expectedLevelIdForCheck}, текущий levelId=${currentLevelId}`
+        );
 
         // Проверяем изменение уровня относительно ОЖИДАЕМОГО уровня
         if (currentLevelId !== expectedLevelIdForCheck) {
           // Пытаемся определить номер ожидаемого уровня для сообщения
-          const expectedLevelNumber = (expectedLevelId === currentLevelIdFromState)
-            ? currentLevelNumberFromState
-            : '?';
+          const expectedLevelNumber =
+            expectedLevelId === currentLevelIdFromState ? currentLevelNumberFromState : '?';
 
-          console.log(`⚠️ ЗАЩИТА СРАБОТАЛА: Уровень изменился! Ожидался: ${expectedLevelNumber} (ID: ${expectedLevelIdForCheck}), текущий: ${currentLevelNumber} (ID: ${currentLevelId})`);
-          const error = new Error(`Уровень изменился (ожидался ${expectedLevelNumber}, текущий ${currentLevelNumber})`);
+          logger.info(
+            `⚠️ ЗАЩИТА СРАБОТАЛА: Уровень изменился! Ожидался: ${expectedLevelNumber} (ID: ${expectedLevelIdForCheck}), текущий: ${currentLevelNumber} (ID: ${currentLevelId})`
+          );
+          const error = new Error(
+            `Уровень изменился (ожидался ${expectedLevelNumber}, текущий ${currentLevelNumber})`
+          );
           error.isLevelChanged = true;
           error.oldLevel = expectedLevelNumber;
           error.newLevel = currentLevelNumber;
@@ -563,7 +614,9 @@ class EncounterAPI {
           throw error;
         }
 
-        console.log(`✅ Уровень актуален (${currentLevelNumber}, ID: ${currentLevelId}), продолжаем отправку`);
+        logger.info(
+          `✅ Уровень актуален (${currentLevelNumber}, ID: ${currentLevelId}), продолжаем отправку`
+        );
       }
 
       // Rate limiting: ждём минимум 1.2 сек с последнего запроса к этому домену
@@ -575,27 +628,33 @@ class EncounterAPI {
         'LevelAction.Answer': answer
       });
 
-      console.log(`🌐 POST URL: ${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`);
-      console.log(`📦 POST данные: ${postData.toString()}`);
+      logger.info(`🌐 POST URL: ${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`);
+      logger.info(`📦 POST данные: ${postData.toString()}`);
 
-      const response = await axios.post(`${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`,
-        postData, {
-        timeout: this.timeout,
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json, text/html, */*',
-          'Cookie': cookieString,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      const response = await axios.post(
+        `${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`,
+        postData,
+        {
+          timeout: this.timeout,
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Accept: 'application/json, text/html, */*',
+            Cookie: cookieString,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
         }
-      });
+      );
 
-      console.log(`📥 Получен ответ от сервера: Event=${response.data.Event}`);
+      logger.info(`📥 Получен ответ от сервера: Event=${response.data.Event}`);
 
       const result = response.data;
 
       // Проверяем если сервер вернул HTML вместо JSON (страница логина)
-      if (typeof result === 'string' && (result.includes('<html>') || result.includes('<!DOCTYPE'))) {
-        console.log(`🔒 Сервер перенаправил на страницу входа - сессия истекла`);
+      if (
+        typeof result === 'string' &&
+        (result.includes('<html>') || result.includes('<!DOCTYPE'))
+      ) {
+        logger.info(`🔒 Сервер перенаправил на страницу входа - сессия истекла`);
         const authError = new Error('Требуется повторная авторизация (сессия истекла)');
         authError.needsAuth = true;
         throw authError;
@@ -603,7 +662,7 @@ class EncounterAPI {
 
       // Проверяем Event=4 (не авторизован)
       if (result.Event === 4) {
-        console.log(`🔒 Event=4: игрок не авторизован`);
+        logger.info(`🔒 Event=4: игрок не авторизован`);
         const authError = new Error('Игрок не авторизован');
         authError.needsAuth = true;
         throw authError;
@@ -611,12 +670,12 @@ class EncounterAPI {
 
       // Проверяем результат
       if (result.Event === undefined || result.Event === null) {
-        console.log(`⚠️ Ответ отправлен, но Event не определен - возможно ответ обработан`);
+        logger.info(`⚠️ Ответ отправлен, но Event не определен - возможно ответ обработан`);
         // Продолжаем анализ LevelAction вместо ошибки
       } else if (result.Event !== 0) {
         // Если уровень изменился - это нормально
         if ([16, 18, 19, 20, 21, 22].includes(result.Event)) {
-          console.log('Уровень изменился, получаем новое состояние...');
+          logger.info('Уровень изменился, получаем новое состояние...');
         } else {
           throw new Error(`Ошибка отправки ответа (код ${result.Event})`);
         }
@@ -625,29 +684,31 @@ class EncounterAPI {
       // Проверяем результат ответа
       const engineAction = result.EngineAction;
       const levelAction = engineAction?.LevelAction;
-      
+
       let isCorrect = false;
       let message = 'Ответ отправлен';
-      
+
       if (levelAction) {
         // Проверяем правильность ответа согласно документации
-        console.log(`📊 LevelAction.Answer: "${levelAction.Answer}"`);
-        console.log(`📊 LevelAction.IsCorrectAnswer: ${levelAction.IsCorrectAnswer}`);
-        
+        logger.info(`📊 LevelAction.Answer: "${levelAction.Answer}"`);
+        logger.info(`📊 LevelAction.IsCorrectAnswer: ${levelAction.IsCorrectAnswer}`);
+
         if (levelAction.IsCorrectAnswer !== null) {
           isCorrect = levelAction.IsCorrectAnswer;
           message = isCorrect ? '✅ Правильный ответ!' : '❌ Неправильный ответ';
-          
-          console.log(`🎯 Результат ответа "${answer}": ${isCorrect ? 'правильный' : 'неправильный'}`);
+
+          logger.info(
+            `🎯 Результат ответа "${answer}": ${isCorrect ? 'правильный' : 'неправильный'}`
+          );
         } else {
-          console.log(`⚠️ Ответ НЕ БЫЛ ОБРАБОТАН (IsCorrectAnswer = null)`);
+          logger.info(`⚠️ Ответ НЕ БЫЛ ОБРАБОТАН (IsCorrectAnswer = null)`);
           message = '⚠️ Ответ не был обработан - проверьте правильность отправки';
         }
-        
+
         // Проверяем был ли пройден уровень
         if (result.Level && result.Level.IsPassed) {
           message += ' 🎉 Уровень пройден!';
-          console.log(`🏆 Уровень ${result.Level.Number} пройден!`);
+          logger.info(`🏆 Уровень ${result.Level.Number} пройден!`);
           // Инвалидируем кеш - уровень изменился
           this._invalidateLevelCache(gameId, 'уровень пройден', null);
         }
@@ -657,7 +718,7 @@ class EncounterAPI {
           this._invalidateLevelCache(gameId, `Event ${result.Event} - уровень изменился`);
         }
       } else {
-        console.log(`❌ Нет данных LevelAction в ответе сервера`);
+        logger.info(`❌ Нет данных LevelAction в ответе сервера`);
         message = '❌ Ответ не обработан - нет данных о результате';
       }
 
@@ -670,7 +731,6 @@ class EncounterAPI {
         level: result.Level,
         newCookies: null // Cookies не обновлялись
       };
-
     } catch (error) {
       if (!isRetry) {
         this._invalidateLevelCache(gameId, 'ошибка отправки ответа');
@@ -678,35 +738,47 @@ class EncounterAPI {
 
       // Если сессия истекла И есть данные для реаутентификации И это не повторная попытка
       if (error.needsAuth && login && password && !isRetry) {
-        console.log(`🔄 Сессия истекла при отправке ответа, выполняю автоматическую реаутентификацию для ${login}...`);
+        logger.info(
+          `🔄 Сессия истекла при отправке ответа, выполняю автоматическую реаутентификацию для ${login}...`
+        );
 
         try {
           let authResult;
 
           // Используем authCallback если он есть (с мьютексом), иначе прямую авторизацию
           if (this.authCallback) {
-            console.log(`🔐 Использую централизованную авторизацию с мьютексом`);
+            logger.info(`🔐 Использую централизованную авторизацию с мьютексом`);
             authResult = await this.authCallback();
           } else {
-            console.log(`⚠️ Fallback: прямая авторизация без мьютекса`);
+            logger.info(`⚠️ Fallback: прямая авторизация без мьютекса`);
             authResult = await this.authenticate(login, password);
           }
 
           if (authResult.success) {
-            console.log(`✅ Автоматическая реаутентификация успешна, повторяю отправку ответа...`);
+            logger.info(`✅ Автоматическая реаутентификация успешна, повторяю отправку ответа...`);
             const mergedCookies = {
               ...(authCookies || {}),
               ...(authResult.cookies || {})
             };
             // Повторяем отправку ответа с обновлёнными cookies (isRetry=true чтобы избежать бесконечной рекурсии)
             // ВАЖНО: передаем expectedLevelId для сохранения проверки уровня
-            const retryResult = await this.sendAnswer(gameId, answer, mergedCookies, login, password, true, expectedLevelId);
+            const retryResult = await this.sendAnswer(
+              gameId,
+              answer,
+              mergedCookies,
+              login,
+              password,
+              true,
+              expectedLevelId
+            );
             // Добавляем информацию о новых cookies для обновления в основном коде
             retryResult.newCookies = mergedCookies;
             return retryResult;
           } else {
             // Реаутентификация не удалась - пробрасываем ошибку дальше
-            const reAuthError = new Error(`Автоматическая реаутентификация не удалась: ${authResult.message}`);
+            const reAuthError = new Error(
+              `Автоматическая реаутентификация не удалась: ${authResult.message}`
+            );
             reAuthError.reAuthFailed = true;
             reAuthError.authMessage = authResult.message;
             throw reAuthError;
@@ -714,7 +786,9 @@ class EncounterAPI {
         } catch (authError) {
           // Ошибка при реаутентификации - пробрасываем дальше
           if (!authError.reAuthFailed) {
-            const wrappedError = new Error(`Ошибка автоматической реаутентификации: ${authError.message}`);
+            const wrappedError = new Error(
+              `Ошибка автоматической реаутентификации: ${authError.message}`
+            );
             wrappedError.reAuthFailed = true;
             throw wrappedError;
           }
@@ -722,7 +796,7 @@ class EncounterAPI {
         }
       }
 
-      console.error('Ошибка отправки ответа в Encounter:', error.message);
+      logger.error('Ошибка отправки ответа в Encounter:', error.message);
       throw error;
     }
   }
@@ -741,14 +815,16 @@ class EncounterAPI {
             name: model.GameTitle || `Игра #${gameId}`,
             number: model.GameNumber,
             status: model.Event === 0 ? 'active' : 'inactive',
-            level: model.Level ? {
-              id: model.Level.LevelId,
-              name: model.Level.Name,
-              number: model.Level.Number,
-              isPassed: model.Level.IsPassed,
-              sectorsTotal: model.Level.RequiredSectorsCount,
-              sectorsPassed: model.Level.PassedSectorsCount
-            } : null,
+            level: model.Level
+              ? {
+                  id: model.Level.LevelId,
+                  name: model.Level.Name,
+                  number: model.Level.Number,
+                  isPassed: model.Level.IsPassed,
+                  sectorsTotal: model.Level.RequiredSectorsCount,
+                  sectorsPassed: model.Level.PassedSectorsCount
+                }
+              : null,
             team: model.TeamName,
             login: model.Login
           }
@@ -757,7 +833,7 @@ class EncounterAPI {
         throw new Error('Не удалось получить состояние игры');
       }
     } catch (error) {
-      console.error('Ошибка получения информации об игре:', error.message);
+      logger.error('Ошибка получения информации об игре:', error.message);
 
       return {
         success: false,
@@ -781,7 +857,7 @@ class EncounterAPI {
       });
       return response.status === 200;
     } catch (error) {
-      console.log('Проверка соединения не удалась:', error.message);
+      logger.info('Проверка соединения не удалась:', error.message);
       return false;
     }
   }
@@ -805,7 +881,7 @@ class EncounterAPI {
         activeGames: response.data.ActiveGames || []
       };
     } catch (error) {
-      console.error('Ошибка получения списка игр:', error.message);
+      logger.error('Ошибка получения списка игр:', error.message);
       return {
         success: false,
         error: error.message

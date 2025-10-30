@@ -1,9 +1,6 @@
 const fs = require('fs-extra');
-const {
-  encryptSecret,
-  decryptSecret,
-  isEncryptedSecret
-} = require('../utils/crypto');
+const { encryptSecret, decryptSecret, isEncryptedSecret } = require('../utils/crypto');
+const { logger } = require('../infra/logger');
 
 const DEFAULT_DATA_FILE = process.env.DATA_FILE || 'user_data.json';
 
@@ -29,15 +26,15 @@ const createEmptyUser = (platform, userId) => {
     authPromise: null,
     pendingQueueDecision: null,
     pendingAnswerDecision: null,
-    lastKnownLevel: null,  // Последний известный уровень { levelId, levelNumber, timestamp }
+    lastKnownLevel: null, // Последний известный уровень { levelId, levelNumber, timestamp }
     // Система накопления кодов для детекта оффлайн-пачки
-    recentMessageTimestamps: [],  // Временные метки последних сообщений для детекта всплеска
-    isAccumulatingAnswers: false,  // Флаг режима накопления
-    accumulatedAnswers: [],  // Буфер накопленных кодов { answer, timestamp, levelId, levelNumber }
-    accumulationStartLevel: null,  // Уровень на момент начала накопления { levelId, levelNumber }
-    accumulationTimer: null,  // ID таймера для завершения накопления
-    pendingBurstAnswers: [],  // Временный буфер сообщений до решения о пачке
-    pendingBurstTimer: null,  // Таймер ожидания перед отправкой одиночного ответа
+    recentMessageTimestamps: [], // Временные метки последних сообщений для детекта всплеска
+    isAccumulatingAnswers: false, // Флаг режима накопления
+    accumulatedAnswers: [], // Буфер накопленных кодов { answer, timestamp, levelId, levelNumber }
+    accumulationStartLevel: null, // Уровень на момент начала накопления { levelId, levelNumber }
+    accumulationTimer: null, // ID таймера для завершения накопления
+    pendingBurstAnswers: [], // Временный буфер сообщений до решения о пачке
+    pendingBurstTimer: null, // Таймер ожидания перед отправкой одиночного ответа
     _burstProcessing: false,
     _burstProcessingRequested: false,
     telegramUsername: null,
@@ -123,7 +120,7 @@ async function loadUserData(customPath) {
         }
 
         if (!userId) {
-          console.warn(`Пропускаем запись без userId: ${rawKey}`);
+          logger.warn(`Пропускаем запись без userId: ${rawKey}`);
           migrationCount++;
           continue;
         }
@@ -186,13 +183,13 @@ async function loadUserData(customPath) {
         await saveUserData();
       }
 
-      console.log(`Данные пользователей загружены (${userData.size} пользователей)`);
+      logger.info(`Данные пользователей загружены (${userData.size} пользователей)`);
       if (migrationCount > 0) {
-        console.log(`Выполнена миграция данных для ${migrationCount} полей`);
+        logger.info(`Выполнена миграция данных для ${migrationCount} полей`);
       }
     }
   } catch (error) {
-    console.error('Ошибка загрузки данных пользователей:', error);
+    logger.error('Ошибка загрузки данных пользователей:', error);
   }
 }
 
@@ -207,7 +204,7 @@ async function saveUserData(customPath) {
       delete sanitizedUser.authPromise;
       delete sanitizedUser.pendingQueueDecision;
       delete sanitizedUser.pendingAnswerDecision;
-      delete sanitizedUser.accumulationTimer;  // Не сохраняем таймер
+      delete sanitizedUser.accumulationTimer; // Не сохраняем таймер
       delete sanitizedUser.pendingBurstAnswers;
       delete sanitizedUser.pendingBurstTimer;
       delete sanitizedUser._burstProcessing;
@@ -219,7 +216,7 @@ async function saveUserData(customPath) {
     }
     await fs.writeJson(targetPath, data, { spaces: 2 });
   } catch (error) {
-    console.error('Ошибка сохранения данных пользователей:', error);
+    logger.error('Ошибка сохранения данных пользователей:', error);
     throw error;
   }
 }

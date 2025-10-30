@@ -1,0 +1,6 @@
+node_modules/
+coverage/
+dist/
+npm-start*.log
+*.log
+__tests__/fixtures/user_data_large.json

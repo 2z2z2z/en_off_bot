@@ -2,6 +2,7 @@
 
 const TelegramBot = require('node-telegram-bot-api');
 const { PlatformAdapter, PlatformEventType, OutboundMessageType } = require('../platform-adapter');
+const { logger } = require('../../infra/logger');
 
 class TelegramAdapter extends PlatformAdapter {
   /**
@@ -36,7 +37,7 @@ class TelegramAdapter extends PlatformAdapter {
     try {
       await this.bot.getMe();
     } catch (error) {
-      console.error('[telegram] Не удалось получить профиль бота:', error.message);
+      logger.error('[telegram] Не удалось получить профиль бота:', error.message);
       throw error;
     }
   }
@@ -49,7 +50,7 @@ class TelegramAdapter extends PlatformAdapter {
     try {
       await this.bot.stopPolling();
     } catch (error) {
-      console.error('[telegram] Ошибка остановки polling:', error.message);
+      logger.error('[telegram] Ошибка остановки polling:', error.message);
     } finally {
       this._isRunning = false;
     }
@@ -108,7 +109,7 @@ class TelegramAdapter extends PlatformAdapter {
   }
 
   _bindListeners() {
-    this.bot.on('message', (msg) => {
+    this.bot.on('message', msg => {
       if (!msg) return;
 
       const text = msg.text || '';
@@ -142,7 +143,7 @@ class TelegramAdapter extends PlatformAdapter {
       this._safeEmit(event);
     });
 
-    this.bot.on('callback_query', (query) => {
+    this.bot.on('callback_query', query => {
       const event = {
         platform: this.name,
         rawUserId: query.from?.id || query.message?.chat?.id,
@@ -163,12 +164,12 @@ class TelegramAdapter extends PlatformAdapter {
       this._safeEmit(event);
     });
 
-    this.bot.on('polling_error', (error) => {
-      console.error('[telegram] polling_error:', error.message);
+    this.bot.on('polling_error', error => {
+      logger.error('[telegram] polling_error:', error.message);
     });
 
-    this.bot.on('error', (error) => {
-      console.error('[telegram] error:', error.message);
+    this.bot.on('error', error => {
+      logger.error('[telegram] error:', error.message);
     });
   }
 
@@ -176,7 +177,7 @@ class TelegramAdapter extends PlatformAdapter {
     try {
       await this.emitEvent(event);
     } catch (error) {
-      console.error('[telegram] Ошибка обработчика события:', error);
+      logger.error('[telegram] Ошибка обработчика события:', error);
     }
   }
 

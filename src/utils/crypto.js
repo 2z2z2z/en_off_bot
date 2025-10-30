@@ -48,7 +48,9 @@ function getEncryptionKey() {
 
   const keyBuffer = deriveKeyBuffer(rawKey);
   if (keyBuffer.length !== 32) {
-    throw new Error('Derived encryption key must be 32 bytes. Provide 32-byte hex/base64 or a longer passphrase.');
+    throw new Error(
+      'Derived encryption key must be 32 bytes. Provide 32-byte hex/base64 or a longer passphrase.'
+    );
   }
 
   cachedKeyBuffer = keyBuffer;

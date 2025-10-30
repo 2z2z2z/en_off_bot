@@ -12,6 +12,14 @@ const {
   makeStorageKey
 } = require('./src/core/user-store');
 const EncounterAPI = require('./encounter-api');
+const { logger } = require('./src/infra/logger');
+const { parseGameUrl } = require('./src/utils/parse-game-url');
+const {
+  BURST_WINDOW,
+  BURST_THRESHOLD,
+  MESSAGE_INTERVAL_MAX,
+  getAccumulationSlice
+} = require('./src/core/burst-detector');
 const { createAnswerService } = require('./src/core/answer-service');
 const { ensureAuthenticated, createAuthCallback } = require('./src/core/auth-manager');
 const {
@@ -34,12 +42,14 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 
 if (!BOT_TOKEN) {
-  console.error('❌ Не задан BOT_TOKEN. Добавьте токен бота в .env или переменные окружения.');
+  logger.error('❌ Не задан BOT_TOKEN. Добавьте токен бота в .env или переменные окружения.');
   process.exit(1);
 }
 
 if (!ENCRYPTION_KEY) {
-  console.error('❌ Не задан ENCRYPTION_KEY. Добавьте уникальный ключ шифрования в .env или переменные окружения.');
+  logger.error(
+    '❌ Не задан ENCRYPTION_KEY. Добавьте уникальный ключ шифрования в .env или переменные окружения.'
+  );
   process.exit(1);
 }
 
@@ -55,15 +65,12 @@ const VK_GROUP_TOKEN = process.env.VK_GROUP_TOKEN || '';
 const VK_GROUP_ID = process.env.VK_GROUP_ID ? Number(process.env.VK_GROUP_ID) : null;
 const VK_PLATFORM = 'vk';
 
-const BURST_WINDOW = 10000; // 10 секунд
-const BURST_THRESHOLD = 3; // минимальное количество сообщений для пачки
-const MESSAGE_INTERVAL_MAX = 2500; // максимальный интервал между сообщениями в пачке
-
 const userStates = new Map();
 
 const getStateKey = (platform, userId) => makeStorageKey(platform, userId);
 const getUserState = (platform, userId) => userStates.get(getStateKey(platform, userId));
-const setUserState = (platform, userId, state) => userStates.set(getStateKey(platform, userId), state);
+const setUserState = (platform, userId, state) =>
+  userStates.set(getStateKey(platform, userId), state);
 const clearUserState = (platform, userId) => userStates.delete(getStateKey(platform, userId));
 
 const getPlatformUser = (platform, userId) => getUserInfo(platform, userId);
@@ -80,11 +87,9 @@ const editMessage = (platform, userId, messageId, text, options = {}) =>
 const deleteMessage = (platform, userId, messageId) =>
   deletePlatformMessage(platform, userId, messageId);
 
-const sendTyping = (platform, userId) =>
-  sendPlatformTyping(platform, userId);
+const sendTyping = (platform, userId) => sendPlatformTyping(platform, userId);
 
-const answerCallback = (platform, data = {}) =>
-  answerPlatformCallback(platform, data);
+const answerCallback = (platform, data = {}) => answerPlatformCallback(platform, data);
 
 const editTelegramMessage = (arg1, arg2, arg3, arg4) => {
   if (typeof arg3 === 'undefined' && typeof arg2 === 'object') {
@@ -149,9 +154,10 @@ async function handleResetCommand(context) {
   clearUserState(platform, userId);
   await saveUserData();
 
-  await sendMessage(platform, userId,
-    '🔄 Данные сброшены!\n\n' +
-    'Все настройки удалены. Используйте /start для повторной настройки.'
+  await sendMessage(
+    platform,
+    userId,
+    '🔄 Данные сброшены!\n\n' + 'Все настройки удалены. Используйте /start для повторной настройки.'
   );
 }
 
@@ -180,10 +186,10 @@ async function handleTestCommand(context) {
     let authResult = { success: false };
 
     if (user.authCookies && Object.keys(user.authCookies).length > 0) {
-      console.log('📋 Используем сохраненную авторизацию для /test');
+      logger.info('📋 Используем сохраненную авторизацию для /test');
       authResult = { success: true, cookies: user.authCookies };
     } else {
-      console.log('🔐 Выполняем новую авторизацию для /test');
+      logger.info('🔐 Выполняем новую авторизацию для /test');
       authResult = await api.authenticate(user.login, user.password);
       if (authResult.success) {
         user.authCookies = authResult.cookies;
@@ -192,35 +198,48 @@ async function handleTestCommand(context) {
     }
 
     if (!authResult.success) {
-      await sendMessage(platform, userId, `⚠️ Подключение есть, но ошибка авторизации: ${authResult.message}`);
+      await sendMessage(
+        platform,
+        userId,
+        `⚠️ Подключение есть, но ошибка авторизации: ${authResult.message}`
+      );
       return;
     }
 
-    const gameInfo = await api.getGameInfo(user.gameId, user.authCookies, user.login, user.password);
+    const gameInfo = await api.getGameInfo(
+      user.gameId,
+      user.authCookies,
+      user.login,
+      user.password
+    );
 
     if (!gameInfo.success) {
-      await sendMessage(platform, userId,
+      await sendMessage(
+        platform,
+        userId,
         `✅ Подключение и авторизация успешны!\n` +
-        `⚠️ Не удалось получить информацию об игре: ${gameInfo.error}\n\n` +
-        `Попробуйте отправить тестовый ответ.`
+          `⚠️ Не удалось получить информацию об игре: ${gameInfo.error}\n\n` +
+          `Попробуйте отправить тестовый ответ.`
       );
       return;
     }
 
     const data = gameInfo.data;
-    await sendMessage(platform, userId,
+    await sendMessage(
+      platform,
+      userId,
       `✅ Тест успешен!\n\n` +
-      `🌐 Подключение: ОК\n` +
-      `🔐 Авторизация: ОК\n` +
-      `🎮 Игра: ${data.name} (№${data.number})\n` +
-      `👤 Игрок: ${data.login}\n` +
-      `👥 Команда: ${data.team || 'Личная игра'}\n` +
-      `📊 Статус: ${data.status === 'active' ? 'Активна' : 'Неактивна'}\n` +
-      (data.level
-        ? `🏆 Уровень: ${data.level.name} (№${data.level.number})\n` +
-          `📈 Сектора: ${data.level.sectorsPassed}/${data.level.sectorsTotal}\n`
-        : '') +
-      `\nГотов к отправке ответов!`
+        `🌐 Подключение: ОК\n` +
+        `🔐 Авторизация: ОК\n` +
+        `🎮 Игра: ${data.name} (№${data.number})\n` +
+        `👤 Игрок: ${data.login}\n` +
+        `👥 Команда: ${data.team || 'Личная игра'}\n` +
+        `📊 Статус: ${data.status === 'active' ? 'Активна' : 'Неактивна'}\n` +
+        (data.level
+          ? `🏆 Уровень: ${data.level.name} (№${data.level.number})\n` +
+            `📈 Сектора: ${data.level.sectorsPassed}/${data.level.sectorsTotal}\n`
+          : '') +
+        `\nГотов к отправке ответов!`
     );
   } catch (error) {
     await sendMessage(platform, userId, `❌ Ошибка тестирования: ${error.message}`);
@@ -260,10 +279,12 @@ async function handleListCommand(context) {
     .map((item, index) => `${index + 1}. "${item.answer}" (уровень ${item.levelNumber || '?'})`)
     .join('\n');
 
-  await sendMessage(platform, userId,
+  await sendMessage(
+    platform,
+    userId,
     `📋 Список накопленных кодов (${totalCodes}):\n\n` +
-    `${allCodes}\n\n` +
-    `Уровень на момент накопления: ${startLevel?.levelNumber || '?'}`
+      `${allCodes}\n\n` +
+      `Уровень на момент накопления: ${startLevel?.levelNumber || '?'}`
   );
 }
 
@@ -288,9 +309,11 @@ async function handleClearCommand(context) {
   }
   await saveUserData();
 
-  await sendMessage(platform, userId,
+  await sendMessage(
+    platform,
+    userId,
     `🧹 Буфер очищен\n\n` +
-    `Удалено ${count} ${count === 1 ? 'код' : count < 5 ? 'кода' : 'кодов'}.`
+      `Удалено ${count} ${count === 1 ? 'код' : count < 5 ? 'кода' : 'кодов'}.`
   );
 }
 
@@ -460,7 +483,7 @@ async function handleCallback(context) {
 
       if (data === 'queue_send') {
         // Отправить очередь в новый уровень
-        console.log(`✅ Пользователь выбрал: отправить ${queue.length} ответов в новый уровень`);
+        logger.info(`✅ Пользователь выбрал: отправить ${queue.length} ответов в новый уровень`);
 
         user.pendingQueueDecision = null;
         await saveUserData();
@@ -472,16 +495,23 @@ async function handleCallback(context) {
           });
         }
 
-        await sendMessage(platform, userId, `Обработка очереди из ${queue.length} ${queue.length === 1 ? 'ответа' : 'ответов'}...`);
+        await sendMessage(
+          platform,
+          userId,
+          `Обработка очереди из ${queue.length} ${queue.length === 1 ? 'ответа' : 'ответов'}...`
+        );
 
         // Запускаем обработку очереди
         await processAnswerQueue(platform, userId);
       } else if (data === 'queue_clear') {
         // Очистить очередь
-        const clearedAnswers = queue.slice(0, 5).map(item => `"${item.answer}"`).join(', ');
+        const clearedAnswers = queue
+          .slice(0, 5)
+          .map(item => `"${item.answer}"`)
+          .join(', ');
         const moreAnswers = queue.length > 5 ? ` и ещё ${queue.length - 5}` : '';
 
-        console.log(`🗑️ Пользователь выбрал: очистить ${queue.length} ответов`);
+        logger.info(`🗑️ Пользователь выбрал: очистить ${queue.length} ответов`);
 
         queue.length = 0;
         user.pendingQueueDecision = null;
@@ -494,15 +524,17 @@ async function handleCallback(context) {
           });
         }
 
-        await sendMessage(platform, userId,
+        await sendMessage(
+          platform,
+          userId,
           `🗑️ Очередь очищена (уровень ${decision.oldLevelNumber} → ${decision.newLevelNumber})\n\n` +
-          `Пропущено ${decision.queueSize} ${decision.queueSize === 1 ? 'ответ' : decision.queueSize < 5 ? 'ответа' : 'ответов'}: ${clearedAnswers}${moreAnswers}`
+            `Пропущено ${decision.queueSize} ${decision.queueSize === 1 ? 'ответ' : decision.queueSize < 5 ? 'ответа' : 'ответов'}: ${clearedAnswers}${moreAnswers}`
         );
       }
 
       return;
     } catch (error) {
-      console.error('Ошибка обработки выбора очереди:', error);
+      logger.error('Ошибка обработки выбора очереди:', error);
       if (queryId) {
         await answerCb({
           queryId,
@@ -534,7 +566,9 @@ async function handleCallback(context) {
 
       if (data === 'answer_send') {
         // Отправить ответ в новый уровень
-        console.log(`Пользователь выбрал: отправить "${decision.answer}" в уровень ${decision.newLevel}`);
+        logger.info(
+          `Пользователь выбрал: отправить "${decision.answer}" в уровень ${decision.newLevel}`
+        );
 
         user.pendingAnswerDecision = null;
         await saveUserData();
@@ -551,7 +585,13 @@ async function handleCallback(context) {
         const api = new EncounterAPI(user.domain, authCallback);
 
         try {
-          const result = await api.sendAnswer(user.gameId, decision.answer, user.authCookies, user.login, user.password);
+          const result = await api.sendAnswer(
+            user.gameId,
+            decision.answer,
+            user.authCookies,
+            user.login,
+            user.password
+          );
 
           if (result.success) {
             let levelInfo = null;
@@ -563,12 +603,20 @@ async function handleCallback(context) {
 
             if (!levelInfo) {
               try {
-                const state = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
+                const state = await api.getGameState(
+                  user.gameId,
+                  user.authCookies,
+                  user.login,
+                  user.password
+                );
                 if (state.success && state.data?.Level && state.data.Level.LevelId) {
                   levelInfo = state.data.Level;
                 }
               } catch (stateError) {
-                console.error('⚠️ Не удалось обновить lastKnownLevel после подтверждения:', stateError.message);
+                logger.error(
+                  '⚠️ Не удалось обновить lastKnownLevel после подтверждения:',
+                  stateError.message
+                );
               }
             }
 
@@ -578,16 +626,22 @@ async function handleCallback(context) {
                 levelNumber: levelInfo.Number,
                 timestamp: Date.now()
               };
-              console.log(`📌 Обновлен lastKnownLevel после подтверждения: уровень ${levelInfo.Number} (ID: ${levelInfo.LevelId})`);
+              logger.info(
+                `📌 Обновлен lastKnownLevel после подтверждения: уровень ${levelInfo.Number} (ID: ${levelInfo.LevelId})`
+              );
             }
 
             await saveUserData();
 
-            await sendMessage(platform, userId,
+            await sendMessage(
+              platform,
+              userId,
               `Ответ "${decision.answer}" отправлен в уровень ${decision.newLevel}\n${result.message}`
             );
           } else {
-            await sendMessage(platform, userId,
+            await sendMessage(
+              platform,
+              userId,
               `❌ Ошибка при отправке: ${result.message || 'Неизвестная ошибка'}`
             );
           }
@@ -597,14 +651,12 @@ async function handleCallback(context) {
             await saveUserData();
           }
         } catch (error) {
-          console.error('Ошибка отправки ответа после подтверждения:', error);
-          await sendMessage(platform, userId,
-            `❌ Ошибка отправки: ${error.message}`
-          );
+          logger.error('Ошибка отправки ответа после подтверждения:', error);
+          await sendMessage(platform, userId, `❌ Ошибка отправки: ${error.message}`);
         }
       } else if (data === 'answer_cancel') {
         // Отменить отправку
-        console.log(`🚫 Пользователь выбрал: отменить отправку "${decision.answer}"`);
+        logger.info(`🚫 Пользователь выбрал: отменить отправку "${decision.answer}"`);
 
         user.pendingAnswerDecision = null;
 
@@ -612,7 +664,12 @@ async function handleCallback(context) {
         try {
           const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
           const api = new EncounterAPI(user.domain, authCallback);
-          const gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
+          const gameState = await api.getGameState(
+            user.gameId,
+            user.authCookies,
+            user.login,
+            user.password
+          );
 
           if (gameState.success && gameState.data?.Level) {
             user.lastKnownLevel = {
@@ -620,10 +677,12 @@ async function handleCallback(context) {
               levelNumber: gameState.data.Level.Number,
               timestamp: Date.now()
             };
-            console.log(`📌 Обновлен lastKnownLevel после отмены ответа: уровень ${gameState.data.Level.Number} (ID: ${gameState.data.Level.LevelId})`);
+            logger.info(
+              `📌 Обновлен lastKnownLevel после отмены ответа: уровень ${gameState.data.Level.Number} (ID: ${gameState.data.Level.LevelId})`
+            );
           }
         } catch (error) {
-          console.error('⚠️ Ошибка обновления lastKnownLevel при отмене:', error.message);
+          logger.error('⚠️ Ошибка обновления lastKnownLevel при отмене:', error.message);
         }
 
         await saveUserData();
@@ -635,15 +694,17 @@ async function handleCallback(context) {
           });
         }
 
-        await sendMessage(platform, userId,
+        await sendMessage(
+          platform,
+          userId,
           `🚫 Ответ "${decision.answer}" отменён\n\n` +
-          `(Был подготовлен для уровня ${decision.oldLevel}, текущий уровень — ${decision.newLevel})`
+            `(Был подготовлен для уровня ${decision.oldLevel}, текущий уровень — ${decision.newLevel})`
         );
       }
 
       return;
     } catch (error) {
-      console.error('Ошибка обработки выбора ответа:', error);
+      logger.error('Ошибка обработки выбора ответа:', error);
       if (queryId) {
         await answerCb({
           queryId,
@@ -656,13 +717,20 @@ async function handleCallback(context) {
   }
 
   // Обработка кнопок управления накопленными кодами (доступно для всех платформ)
-  if (data === 'batch_send_all' || data === 'batch_send_force' || data === 'batch_cancel_all' || data === 'batch_list') {
+  if (
+    data === 'batch_send_all' ||
+    data === 'batch_send_force' ||
+    data === 'batch_cancel_all' ||
+    data === 'batch_list'
+  ) {
     try {
       const user = getPlatformUser(platform, userId);
 
       if (data === 'batch_send_all') {
         // Отправить все накопленные коды
-        console.log(`✅ Пользователь выбрал: отправить ${user.accumulatedAnswers?.length || 0} накопленных кодов`);
+        logger.info(
+          `✅ Пользователь выбрал: отправить ${user.accumulatedAnswers?.length || 0} накопленных кодов`
+        );
 
         if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
           if (queryId) {
@@ -684,10 +752,9 @@ async function handleCallback(context) {
 
         // Вызываем функцию отправки пачки с защитой
         await processBatchSend(platform, userId);
-
       } else if (data === 'batch_send_force') {
         // Принудительная отправка (когда уровень изменился, но пользователь хочет отправить в новый)
-        console.log(`✅ Пользователь выбрал: принудительно отправить в новый уровень`);
+        logger.info(`✅ Пользователь выбрал: принудительно отправить в новый уровень`);
 
         if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
           if (queryId) {
@@ -713,11 +780,10 @@ async function handleCallback(context) {
 
         // Вызываем отправку пачки
         await processBatchSend(platform, userId);
-
       } else if (data === 'batch_cancel_all') {
         // Отменить все накопленные коды
         const count = user.accumulatedAnswers?.length || 0;
-        console.log(`🚫 Пользователь выбрал: отменить ${count} накопленных кодов`);
+        logger.info(`🚫 Пользователь выбрал: отменить ${count} накопленных кодов`);
 
         if (count === 0) {
           if (queryId) {
@@ -734,7 +800,12 @@ async function handleCallback(context) {
         try {
           const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
           const api = new EncounterAPI(user.domain, authCallback);
-          const gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
+          const gameState = await api.getGameState(
+            user.gameId,
+            user.authCookies,
+            user.login,
+            user.password
+          );
 
           if (gameState.success && gameState.data?.Level) {
             user.lastKnownLevel = {
@@ -742,10 +813,12 @@ async function handleCallback(context) {
               levelNumber: gameState.data.Level.Number,
               timestamp: Date.now()
             };
-            console.log(`📌 Обновлен lastKnownLevel после отмены пачки: уровень ${gameState.data.Level.Number} (ID: ${gameState.data.Level.LevelId})`);
+            logger.info(
+              `📌 Обновлен lastKnownLevel после отмены пачки: уровень ${gameState.data.Level.Number} (ID: ${gameState.data.Level.LevelId})`
+            );
           }
         } catch (error) {
-          console.error('⚠️ Ошибка обновления lastKnownLevel при отмене:', error.message);
+          logger.error('⚠️ Ошибка обновления lastKnownLevel при отмене:', error.message);
         }
 
         // Очищаем буфер накопления
@@ -767,13 +840,14 @@ async function handleCallback(context) {
           });
         }
 
-        await sendMessage(platform, userId,
+        await sendMessage(
+          platform,
+          userId,
           `🚫 Отменено ${count} ${count === 1 ? 'код' : count < 5 ? 'кода' : 'кодов'}`
         );
-
       } else if (data === 'batch_list') {
         // Показать полный список накопленных кодов
-        console.log(`📋 Пользователь запросил список накопленных кодов`);
+        logger.info(`📋 Пользователь запросил список накопленных кодов`);
 
         if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
           if (queryId) {
@@ -787,22 +861,25 @@ async function handleCallback(context) {
         }
 
         const allCodes = user.accumulatedAnswers
-          .map((item, index) => `${index + 1}. "${item.answer}" (уровень ${item.levelNumber || '?'})`)
+          .map(
+            (item, index) => `${index + 1}. "${item.answer}" (уровень ${item.levelNumber || '?'})`
+          )
           .join('\n');
 
         if (queryId) {
           await answerCb({ queryId });
         }
 
-        await sendMessage(platform, userId,
+        await sendMessage(
+          platform,
+          userId,
           `📋 Полный список накопленных кодов (${user.accumulatedAnswers.length}):\n\n${allCodes}`
         );
-
       }
 
       return;
     } catch (error) {
-      console.error('Ошибка обработки накопленных кодов:', error);
+      logger.error('Ошибка обработки накопленных кодов:', error);
       if (queryId) {
         await answerCb({
           queryId,
@@ -876,7 +953,7 @@ async function handleCallback(context) {
       await answerCb({ queryId });
     }
   } catch (error) {
-    console.error('Ошибка обработки callback_query:', error);
+    logger.error('Ошибка обработки callback_query:', error);
     if (queryId) {
       await answerCb({
         queryId,
@@ -896,7 +973,7 @@ async function processBatchSend(platform, userId) {
   const user = getPlatformUser(platform, userId);
 
   if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
-    console.log(`⚠️ Нет накопленных кодов для отправки`);
+    logger.info(`⚠️ Нет накопленных кодов для отправки`);
     await sendMessage(platform, userId, '⚠️ Нет накопленных кодов');
     return;
   }
@@ -904,16 +981,23 @@ async function processBatchSend(platform, userId) {
   const totalCodes = user.accumulatedAnswers.length;
   const startLevel = user.accumulationStartLevel;
 
-  console.log(`📤 Начало отправки пачки: ${totalCodes} кодов (уровень на момент накопления: ${startLevel?.levelNumber || '?'})`);
+  logger.info(
+    `📤 Начало отправки пачки: ${totalCodes} кодов (уровень на момент накопления: ${startLevel?.levelNumber || '?'})`
+  );
 
   try {
     // 🛡️ ЗАЩИТА УРОВЕНЬ 1: Проверка ПЕРЕД началом отправки
-    console.log(`🔍 Проверка уровня ПЕРЕД отправкой пачки...`);
+    logger.info(`🔍 Проверка уровня ПЕРЕД отправкой пачки...`);
 
     const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
     const api = new EncounterAPI(user.domain, authCallback);
 
-    const gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
+    const gameState = await api.getGameState(
+      user.gameId,
+      user.authCookies,
+      user.login,
+      user.password
+    );
 
     if (!gameState.success || !gameState.data || !gameState.data.Level) {
       throw new Error('Не удалось получить состояние игры');
@@ -922,12 +1006,16 @@ async function processBatchSend(platform, userId) {
     const currentLevelId = gameState.data.Level.LevelId;
     const currentLevelNumber = gameState.data.Level.Number;
 
-    console.log(`📋 Уровень на момент накопления: ${startLevel?.levelNumber} (ID: ${startLevel?.levelId})`);
-    console.log(`📋 Текущий уровень: ${currentLevelNumber} (ID: ${currentLevelId})`);
+    logger.info(
+      `📋 Уровень на момент накопления: ${startLevel?.levelNumber} (ID: ${startLevel?.levelId})`
+    );
+    logger.info(`📋 Текущий уровень: ${currentLevelNumber} (ID: ${currentLevelId})`);
 
     // Если уровень изменился - предупреждаем
     if (startLevel?.levelId && currentLevelId !== startLevel.levelId) {
-      console.log(`⚠️ Уровень изменился (${startLevel.levelNumber} → ${currentLevelNumber}), спрашиваем пользователя`);
+      logger.info(
+        `⚠️ Уровень изменился (${startLevel.levelNumber} → ${currentLevelNumber}), спрашиваем пользователя`
+      );
 
       const codesList = user.accumulatedAnswers
         .slice(0, 5)
@@ -944,20 +1032,30 @@ async function processBatchSend(platform, userId) {
       if (platform === 'telegram') {
         options = {
           reply_markup: {
-            inline_keyboard: [[
-              { text: `✅ Отправить в уровень ${currentLevelNumber}`, callback_data: 'batch_send_force' },
-              { text: '🚫 Отменить', callback_data: 'batch_cancel_all' }
-            ]]
+            inline_keyboard: [
+              [
+                {
+                  text: `✅ Отправить в уровень ${currentLevelNumber}`,
+                  callback_data: 'batch_send_force'
+                },
+                { text: '🚫 Отменить', callback_data: 'batch_cancel_all' }
+              ]
+            ]
           }
         };
       } else if (platform === 'vk') {
         options = {
           keyboard: {
             type: 'inline',
-            buttons: [[
-              { label: `✅ Отправить в уровень ${currentLevelNumber}`, payload: { action: 'batch_send_force' } },
-              { label: '🚫 Отменить', payload: { action: 'batch_cancel_all' } }
-            ]]
+            buttons: [
+              [
+                {
+                  label: `✅ Отправить в уровень ${currentLevelNumber}`,
+                  payload: { action: 'batch_send_force' }
+                },
+                { label: '🚫 Отменить', payload: { action: 'batch_cancel_all' } }
+              ]
+            ]
           }
         };
       }
@@ -966,7 +1064,7 @@ async function processBatchSend(platform, userId) {
       return;
     }
 
-    console.log(`✅ Уровень не изменился, начинаем отправку`);
+    logger.info(`✅ Уровень не изменился, начинаем отправку`);
 
     const normalizeCount = value => {
       if (value === undefined || value === null) {
@@ -983,7 +1081,14 @@ async function processBatchSend(platform, userId) {
       return `${passed}/${required}`;
     };
 
-    const buildBatchProgressMessage = ({ progress, total, answer, statusText, levelNumber, sectorsText }) => {
+    const buildBatchProgressMessage = ({
+      progress,
+      total,
+      answer,
+      statusText,
+      levelNumber,
+      sectorsText
+    }) => {
       const levelDisplay = levelNumber ?? '—';
       const safeAnswer = answer ?? '—';
       const lines = [
@@ -1030,7 +1135,7 @@ async function processBatchSend(platform, userId) {
       const item = batchCopy[i];
       const processed = i + 1;
 
-      console.log(`📤 Отправка кода ${i + 1}/${totalCodes}: "${item.answer}"`);
+      logger.info(`📤 Отправка кода ${i + 1}/${totalCodes}: "${item.answer}"`);
 
       const sendingMessage = buildBatchProgressMessage({
         progress: processed,
@@ -1044,11 +1149,19 @@ async function processBatchSend(platform, userId) {
       await sendOrUpdateMessage(platform, userId, sendingMessage, progressMsg.message_id);
 
       try {
-        const result = await api.sendAnswer(user.gameId, item.answer, user.authCookies, user.login, user.password, false, currentLevelId);
+        const result = await api.sendAnswer(
+          user.gameId,
+          item.answer,
+          user.authCookies,
+          user.login,
+          user.password,
+          false,
+          currentLevelId
+        );
 
         if (result.success) {
           sent++;
-          console.log(`✅ Код "${item.answer}" отправлен (${sent}/${totalCodes})`);
+          logger.info(`✅ Код "${item.answer}" отправлен (${sent}/${totalCodes})`);
 
           if (result.level) {
             latestLevelNumber = result.level.Number ?? latestLevelNumber;
@@ -1080,7 +1193,9 @@ async function processBatchSend(platform, userId) {
 
           // 🛡️ ЗАЩИТА УРОВЕНЬ 2: Проверка ПОСЛЕ отправки кода
           if (result.level && result.level.LevelId !== currentLevelId) {
-            console.log(`⚠️ Уровень изменился во время отправки (${currentLevelNumber} → ${result.level.Number})`);
+            logger.info(
+              `⚠️ Уровень изменился во время отправки (${currentLevelNumber} → ${result.level.Number})`
+            );
             stopped = true;
 
             // Удаляем отправленные коды из буфера
@@ -1105,20 +1220,30 @@ async function processBatchSend(platform, userId) {
             if (platform === 'telegram') {
               options = {
                 reply_markup: {
-                  inline_keyboard: [[
-                    { text: `✅ Отправить в уровень ${result.level.Number}`, callback_data: 'batch_send_force' },
-                    { text: '🚫 Отменить', callback_data: 'batch_cancel_all' }
-                  ]]
+                  inline_keyboard: [
+                    [
+                      {
+                        text: `✅ Отправить в уровень ${result.level.Number}`,
+                        callback_data: 'batch_send_force'
+                      },
+                      { text: '🚫 Отменить', callback_data: 'batch_cancel_all' }
+                    ]
+                  ]
                 }
               };
             } else if (platform === 'vk') {
               options = {
                 keyboard: {
                   type: 'inline',
-                  buttons: [[
-                    { label: `✅ Отправить в уровень ${result.level.Number}`, payload: { action: 'batch_send_force' } },
-                    { label: '🚫 Отменить', payload: { action: 'batch_cancel_all' } }
-                  ]]
+                  buttons: [
+                    [
+                      {
+                        label: `✅ Отправить в уровень ${result.level.Number}`,
+                        payload: { action: 'batch_send_force' }
+                      },
+                      { label: '🚫 Отменить', payload: { action: 'batch_cancel_all' } }
+                    ]
+                  ]
                 }
               };
             }
@@ -1153,7 +1278,7 @@ async function processBatchSend(platform, userId) {
           });
         }
       } catch (error) {
-        console.error(`❌ Ошибка отправки кода "${item.answer}":`, error.message);
+        logger.error(`❌ Ошибка отправки кода "${item.answer}":`, error.message);
 
         // Если уровень изменился - прерываем
         if (error.isLevelChanged) {
@@ -1162,11 +1287,13 @@ async function processBatchSend(platform, userId) {
           user.accumulatedAnswers.splice(0, sent);
           await saveUserData();
 
-          await sendMessage(platform, userId,
+          await sendMessage(
+            platform,
+            userId,
             `⚠️ Уровень изменился во время отправки!\n\n` +
-            `📊 Отправлено: ${sent}/${totalCodes}\n` +
-            `📦 Осталось: ${totalCodes - sent}\n\n` +
-            `Используйте кнопки выше для выбора.`
+              `📊 Отправлено: ${sent}/${totalCodes}\n` +
+              `📦 Осталось: ${totalCodes - sent}\n\n` +
+              `Используйте кнопки выше для выбора.`
           );
           break;
         }
@@ -1195,7 +1322,7 @@ async function processBatchSend(platform, userId) {
 
       // Задержка между отправками
       if (i < batchCopy.length - 1) {
-        console.log('⏱️ Задержка 1.2 секунды перед следующим кодом...');
+        logger.info('⏱️ Задержка 1.2 секунды перед следующим кодом...');
         await new Promise(resolve => setTimeout(resolve, 1200));
       }
     }
@@ -1237,9 +1364,8 @@ async function processBatchSend(platform, userId) {
 
       await sendOrUpdateMessage(platform, userId, finalReport, progressMsg.message_id);
     }
-
   } catch (error) {
-    console.error('Ошибка отправки пачки:', error);
+    logger.error('Ошибка отправки пачки:', error);
     await sendMessage(platform, userId, `❌ Ошибка отправки пачки: ${error.message}`);
   }
 }
@@ -1265,7 +1391,7 @@ async function handleTextMessage(context) {
 
   // Очищаем старые метки (> 10 секунд)
   user.recentMessageTimestamps = user.recentMessageTimestamps.filter(
-    timestamp => (now - timestamp) < BURST_WINDOW
+    timestamp => now - timestamp < BURST_WINDOW
   );
 
   let currentState = getUserState(platform, userId);
@@ -1343,7 +1469,11 @@ async function processStateInput(platform, userId, user, currentState, text, con
       await handleReadyStateInput(platform, userId, user, text, context);
       break;
     default:
-      await sendMessage(platform, userId, '⚠️ Неизвестное состояние. Используйте /start для повторной настройки.');
+      await sendMessage(
+        platform,
+        userId,
+        '⚠️ Неизвестное состояние. Используйте /start для повторной настройки.'
+      );
       setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
       break;
   }
@@ -1360,7 +1490,11 @@ async function handlePasswordInput(platform, userId, user, text) {
 
   if (!user.login || !user.password || user.login.length < 2 || user.password.length < 2) {
     setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
-    await sendMessage(platform, userId, '❌ Логин и пароль должны содержать минимум 2 символа.\nВведите логин еще раз:');
+    await sendMessage(
+      platform,
+      userId,
+      '❌ Логин и пароль должны содержать минимум 2 символа.\nВведите логин еще раз:'
+    );
     return;
   }
 
@@ -1373,11 +1507,13 @@ async function handlePasswordInput(platform, userId, user, text) {
       user.authCookies = authResult.cookies;
       await saveUserData();
       setUserState(platform, userId, STATES.WAITING_FOR_GAME_URL);
-      await sendMessage(platform, userId,
+      await sendMessage(
+        platform,
+        userId,
         '✅ Авторизация успешна!\nТеперь пришлите ссылку на игру Encounter.\n\n' +
-        'Поддерживаемые форматы:\n' +
-        '• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n' +
-        '• https://domain.en.cx/gameengines/encounter/play/XXXXX/'
+          'Поддерживаемые форматы:\n' +
+          '• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n' +
+          '• https://domain.en.cx/gameengines/encounter/play/XXXXX/'
       );
     } else {
       setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
@@ -1385,7 +1521,11 @@ async function handlePasswordInput(platform, userId, user, text) {
     }
   } catch (error) {
     setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
-    await sendMessage(platform, userId, `❌ Ошибка проверки авторизации: ${error.message}\nВведите логин еще раз:`);
+    await sendMessage(
+      platform,
+      userId,
+      `❌ Ошибка проверки авторизации: ${error.message}\nВведите логин еще раз:`
+    );
   }
 }
 
@@ -1402,7 +1542,9 @@ async function handleGameUrlInput(platform, userId, user, text) {
   }
 
   if (user.domain && user.domain !== gameUrlResult.domain) {
-    console.log(`🔄 Домен изменился с ${user.domain} на ${gameUrlResult.domain}, сбрасываем cookies`);
+    logger.info(
+      `🔄 Домен изменился с ${user.domain} на ${gameUrlResult.domain}, сбрасываем cookies`
+    );
     user.authCookies = null;
   }
 
@@ -1441,31 +1583,10 @@ function scheduleBurstTimer(platform, userId, user, delay) {
   const timeout = Math.max(delay, 0);
   user.pendingBurstTimer = setTimeout(() => {
     user.pendingBurstTimer = null;
-    triggerBurstProcessing(platform, userId).catch((error) => {
-      console.error('[burst] Ошибка повторной обработки:', error);
+    triggerBurstProcessing(platform, userId).catch(error => {
+      logger.error('[burst] Ошибка повторной обработки:', error);
     });
   }, timeout);
-}
-
-function getAccumulationSlice(pending) {
-  if (!pending || pending.length < BURST_THRESHOLD) {
-    return null;
-  }
-
-  const slice = pending.slice(-BURST_THRESHOLD);
-  const firstTs = slice[0].timestamp;
-  const lastTs = slice[slice.length - 1].timestamp;
-  if ((lastTs - firstTs) > BURST_WINDOW) {
-    return null;
-  }
-
-  for (let i = 1; i < slice.length; i++) {
-    if ((slice[i].timestamp - slice[i - 1].timestamp) > MESSAGE_INTERVAL_MAX) {
-      return null;
-    }
-  }
-
-  return slice;
 }
 
 async function processPendingEntry(platform, userId, entry) {
@@ -1474,12 +1595,17 @@ async function processPendingEntry(platform, userId, entry) {
   }
 
   try {
-    const result = await sendAnswerToEncounter(platform, userId, entry.answer, entry.progressMessageId);
+    const result = await sendAnswerToEncounter(
+      platform,
+      userId,
+      entry.answer,
+      entry.progressMessageId
+    );
     if (entry.resolve) {
       entry.resolve(result);
     }
   } catch (error) {
-    console.error('[burst] Ошибка обработки ответа из буфера:', error);
+    logger.error('[burst] Ошибка обработки ответа из буфера:', error);
     if (entry.resolve) {
       entry.resolve(null);
     }
@@ -1510,12 +1636,7 @@ async function triggerBurstProcessing(platform, userId) {
   user._burstProcessing = true;
 
   try {
-    while (true) {
-      if (!user.pendingBurstAnswers || user.pendingBurstAnswers.length === 0) {
-        clearBurstTimer(user);
-        break;
-      }
-
+    while (user.pendingBurstAnswers && user.pendingBurstAnswers.length > 0) {
       if (user.isAccumulatingAnswers) {
         await drainAllPending(platform, userId, user);
         continue;
@@ -1523,13 +1644,19 @@ async function triggerBurstProcessing(platform, userId) {
 
       const accumulationSlice = getAccumulationSlice(user.pendingBurstAnswers);
       if (accumulationSlice) {
-        const spanMs = accumulationSlice[accumulationSlice.length - 1].timestamp - accumulationSlice[0].timestamp;
-        console.log(`🔍 Детект оффлайн-пачки: ${accumulationSlice.length} сообщений за ${(spanMs / 1000).toFixed(2)}с`);
+        const spanMs =
+          accumulationSlice[accumulationSlice.length - 1].timestamp -
+          accumulationSlice[0].timestamp;
+        logger.info(
+          `🔍 Детект оффлайн-пачки: ${accumulationSlice.length} сообщений за ${(spanMs / 1000).toFixed(2)}с`
+        );
 
         user.isAccumulatingAnswers = true;
         user.accumulatedAnswers = user.accumulatedAnswers || [];
         user.accumulationStartLevel = user.accumulationStartLevel || user.lastKnownLevel || null;
-        console.log(`📦 Режим накопления активирован (уровень: ${user.accumulationStartLevel?.levelNumber || '?'})`);
+        logger.info(
+          `📦 Режим накопления активирован (уровень: ${user.accumulationStartLevel?.levelNumber || '?'})`
+        );
 
         await drainAllPending(platform, userId, user);
         continue;
@@ -1548,6 +1675,9 @@ async function triggerBurstProcessing(platform, userId) {
       scheduleBurstTimer(platform, userId, user, MESSAGE_INTERVAL_MAX - elapsed);
       break;
     }
+    if (!user.pendingBurstAnswers || user.pendingBurstAnswers.length === 0) {
+      clearBurstTimer(user);
+    }
   } finally {
     user._burstProcessing = false;
     if (user._burstProcessingRequested) {
@@ -1561,7 +1691,7 @@ async function queueAnswerForProcessing(platform, userId, user, answer, progress
   ensureBurstBuffer(user);
   const timestamp = Date.now();
 
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     user.pendingBurstAnswers.push({
       answer,
       timestamp,
@@ -1569,8 +1699,8 @@ async function queueAnswerForProcessing(platform, userId, user, answer, progress
       resolve
     });
 
-    triggerBurstProcessing(platform, userId).catch((error) => {
-      console.error('[burst] Ошибка запуска обработки:', error);
+    triggerBurstProcessing(platform, userId).catch(error => {
+      logger.error('[burst] Ошибка запуска обработки:', error);
       resolve(null);
     });
   });
@@ -1604,7 +1734,12 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
 
       let gameState;
       try {
-        gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
+        gameState = await api.getGameState(
+          user.gameId,
+          user.authCookies,
+          user.login,
+          user.password
+        );
       } catch (e) {
         const msg = String(e.message || '').toLowerCase();
         if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
@@ -1629,19 +1764,34 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
         if (model.Event === 16) {
           gameState = await api.getGameState(user.gameId, user.authCookies);
           if (!gameState.success || gameState.data.Event !== 0) {
-            await sendOrUpdateMessage(platform, userId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg?.message_id);
+            await sendOrUpdateMessage(
+              platform,
+              userId,
+              '⚠️ Игра неактивна или недоступна сейчас.',
+              waitMsg?.message_id
+            );
             return;
           }
           model = gameState.data;
         } else {
-          await sendOrUpdateMessage(platform, userId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg?.message_id);
+          await sendOrUpdateMessage(
+            platform,
+            userId,
+            '⚠️ Игра неактивна или недоступна сейчас.',
+            waitMsg?.message_id
+          );
           return;
         }
       }
 
       const level = model.Level;
       if (!level) {
-        await sendOrUpdateMessage(platform, userId, '⚠️ Активный уровень не найден.', waitMsg?.message_id);
+        await sendOrUpdateMessage(
+          platform,
+          userId,
+          '⚠️ Активный уровень не найден.',
+          waitMsg?.message_id
+        );
         return;
       }
 
@@ -1660,9 +1810,21 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
 
       if (waitMsg?.message_id) {
         if (sectorsMessage.text.length <= 4000) {
-          await editMessage(platform, userId, waitMsg.message_id, sectorsMessage.text, sectorsMessage.options);
+          await editMessage(
+            platform,
+            userId,
+            waitMsg.message_id,
+            sectorsMessage.text,
+            sectorsMessage.options
+          );
         } else {
-          await editMessage(platform, userId, waitMsg.message_id, sectorsMessage.header, sectorsMessage.options);
+          await editMessage(
+            platform,
+            userId,
+            waitMsg.message_id,
+            sectorsMessage.header,
+            sectorsMessage.options
+          );
           for (const chunk of splitMessageBody(sectorsMessage.body, 4000)) {
             await sendMessage(platform, userId, chunk, sectorsMessage.options);
           }
@@ -1671,7 +1833,12 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
         await sendMessage(platform, userId, sectorsMessage.text, sectorsMessage.options);
       }
     } catch (error) {
-      await sendOrUpdateMessage(platform, userId, `❌ Не удалось получить сектора: ${error.message}`, waitMsg?.message_id);
+      await sendOrUpdateMessage(
+        platform,
+        userId,
+        `❌ Не удалось получить сектора: ${error.message}`,
+        waitMsg?.message_id
+      );
     }
     return;
   }
@@ -1679,16 +1846,21 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
   if (text === '📊 Статус очереди') {
     const queueLength = user.answerQueue.length;
     const status = user.isOnline ? '🟢 Онлайн' : '🔴 Оффлайн';
-    const queueText = queueLength > 0
-      ? 'Очередь:\n' + user.answerQueue.map((item, index) =>
-          `${index + 1}. "${item.answer}" (${new Date(item.timestamp).toLocaleTimeString()})`
-        ).join('\n')
-      : 'Очередь пуста';
+    const queueText =
+      queueLength > 0
+        ? 'Очередь:\n' +
+          user.answerQueue
+            .map(
+              (item, index) =>
+                `${index + 1}. "${item.answer}" (${new Date(item.timestamp).toLocaleTimeString()})`
+            )
+            .join('\n')
+        : 'Очередь пуста';
 
-    await sendMessage(platform, userId,
-      `Статус: ${status}\n` +
-      `Ответов в очереди: ${queueLength}\n\n` +
-      queueText
+    await sendMessage(
+      platform,
+      userId,
+      `Статус: ${status}\n` + `Ответов в очереди: ${queueLength}\n\n` + queueText
     );
     return;
   }
@@ -1702,10 +1874,12 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
     user.authCookies = null;
     await saveUserData();
     setUserState(platform, userId, STATES.WAITING_FOR_GAME_URL);
-    await sendMessage(platform, userId,
+    await sendMessage(
+      platform,
+      userId,
       'Пришлите новую ссылку на игру:\n\n' +
-      '• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n' +
-      '• https://domain.en.cx/gameengines/encounter/play/XXXXX/'
+        '• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n' +
+        '• https://domain.en.cx/gameengines/encounter/play/XXXXX/'
     );
     return;
   }
@@ -1724,7 +1898,8 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
   }
 
   const progressMessage = await sendMessage(platform, userId, `⏳ Отправляю ответ "${text}"...`);
-  const progressMessageId = progressMessage?.message_id ?? progressMessage?.conversation_message_id ?? null;
+  const progressMessageId =
+    progressMessage?.message_id ?? progressMessage?.conversation_message_id ?? null;
   const result = await queueAnswerForProcessing(platform, userId, user, text, progressMessageId);
 
   if (result && user.answerQueue.length > 0) {
@@ -1778,19 +1953,34 @@ async function sendLevelTask(platform, userId, user, formatted) {
       if (model.Event === 16) {
         gameState = await api.getGameState(user.gameId, user.authCookies);
         if (!gameState.success || gameState.data.Event !== 0) {
-          await sendOrUpdateMessage(platform, userId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg?.message_id);
+          await sendOrUpdateMessage(
+            platform,
+            userId,
+            '⚠️ Игра неактивна или недоступна сейчас.',
+            waitMsg?.message_id
+          );
           return;
         }
         model = gameState.data;
       } else {
-        await sendOrUpdateMessage(platform, userId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg?.message_id);
+        await sendOrUpdateMessage(
+          platform,
+          userId,
+          '⚠️ Игра неактивна или недоступна сейчас.',
+          waitMsg?.message_id
+        );
         return;
       }
     }
 
     const level = model.Level;
     if (!level) {
-      await sendOrUpdateMessage(platform, userId, '⚠️ Активный уровень не найден.', waitMsg?.message_id);
+      await sendOrUpdateMessage(
+        platform,
+        userId,
+        '⚠️ Активный уровень не найден.',
+        waitMsg?.message_id
+      );
       return;
     }
 
@@ -1827,7 +2017,12 @@ async function sendLevelTask(platform, userId, user, formatted) {
     const errorPrefix = formatted
       ? '❌ Не удалось получить форматированное задание'
       : '❌ Не удалось получить задание';
-    await sendOrUpdateMessage(platform, userId, `${errorPrefix}: ${error.message}`, waitMsg?.message_id);
+    await sendOrUpdateMessage(
+      platform,
+      userId,
+      `${errorPrefix}: ${error.message}`,
+      waitMsg?.message_id
+    );
   }
 }
 
@@ -1865,43 +2060,45 @@ async function loadAdminConfig() {
       // Миграция старого формата whitelist
       let migrationCount = 0;
       if (adminConfig.whitelist && Array.isArray(adminConfig.whitelist)) {
-        adminConfig.whitelist = adminConfig.whitelist.map(item => {
-          // Если уже новый формат - оставляем как есть
-          if (item.login) {
+        adminConfig.whitelist = adminConfig.whitelist
+          .map(item => {
+            // Если уже новый формат - оставляем как есть
+            if (item.login) {
+              return item;
+            }
+            // Если старый формат с type === 'encounter'
+            if (item.type === 'encounter' && item.value) {
+              migrationCount++;
+              return {
+                login: item.value,
+                addedBy: item.addedBy,
+                addedAt: item.addedAt
+              };
+            }
+            // Если старый формат с type === 'telegram' - игнорируем
+            if (item.type === 'telegram') {
+              migrationCount++;
+              return null;
+            }
             return item;
-          }
-          // Если старый формат с type === 'encounter'
-          if (item.type === 'encounter' && item.value) {
-            migrationCount++;
-            return {
-              login: item.value,
-              addedBy: item.addedBy,
-              addedAt: item.addedAt
-            };
-          }
-          // Если старый формат с type === 'telegram' - игнорируем
-          if (item.type === 'telegram') {
-            migrationCount++;
-            return null;
-          }
-          return item;
-        }).filter(Boolean); // Удаляем null значения
+          })
+          .filter(Boolean); // Удаляем null значения
 
         if (migrationCount > 0) {
-          console.log(`Выполнена миграция whitelist: обработано ${migrationCount} записей`);
+          logger.info(`Выполнена миграция whitelist: обработано ${migrationCount} записей`);
           await saveAdminConfig();
         }
       }
 
       rebuildWhitelistCache();
-      console.log('Админ-конфигурация загружена');
+      logger.info('Админ-конфигурация загружена');
     } else {
       // Создаем файл с начальными настройками
       await saveAdminConfig();
-      console.log('Создан файл админ-конфигурации');
+      logger.info('Создан файл админ-конфигурации');
     }
   } catch (error) {
-    console.error('Ошибка загрузки админ-конфигурации:', error);
+    logger.error('Ошибка загрузки админ-конфигурации:', error);
   }
 }
 
@@ -1911,7 +2108,7 @@ async function saveAdminConfig() {
     await fs.writeJson(ADMIN_CONFIG_FILE, adminConfig, { spaces: 2 });
     rebuildWhitelistCache();
   } catch (error) {
-    console.error('Ошибка сохранения админ-конфигурации:', error);
+    logger.error('Ошибка сохранения админ-конфигурации:', error);
   }
 }
 
@@ -1927,7 +2124,7 @@ function rebuildWhitelistCache() {
       }
     });
   }
-  console.log(`Whitelist cache обновлен: ${whitelistCache.size} записей`);
+  logger.info(`Whitelist cache обновлен: ${whitelistCache.size} записей`);
 }
 
 // Создание клавиатуры для главного меню
@@ -1973,11 +2170,12 @@ function createMainKeyboard(platform) {
   return {};
 }
 
-function buildSectorsMessage(platform, { sectors, totalRequired, totalCount, passedCount, leftToClose }) {
+function buildSectorsMessage(
+  platform,
+  { sectors, totalRequired, totalCount, passedCount, leftToClose }
+) {
   const isTelegram = platform === TELEGRAM_PLATFORM;
-  const options = isTelegram
-    ? { parse_mode: 'HTML', disable_web_page_preview: true }
-    : {};
+  const options = isTelegram ? { parse_mode: 'HTML', disable_web_page_preview: true } : {};
 
   if (!Array.isArray(sectors) || sectors.length === 0) {
     const header = isTelegram ? '<b>🗄 Секторы</b>' : '🗄 Секторы';
@@ -2032,7 +2230,7 @@ function collectTaskFragments(tasks, { formatted = false } = {}) {
   const fragments = [];
   const field = formatted ? 'TaskTextFormatted' : 'TaskText';
 
-  const addFragment = (rawValue) => {
+  const addFragment = rawValue => {
     if (rawValue == null) {
       return;
     }
@@ -2086,12 +2284,13 @@ function collectHelps(helps, { formatted = false } = {}) {
   return result;
 }
 
-function buildTaskMessage(platform, { level, taskFragments, helps, timeoutRemain, formatted = false }) {
+function buildTaskMessage(
+  platform,
+  { level, taskFragments, helps, timeoutRemain, formatted = false }
+) {
   const isTelegram = platform === TELEGRAM_PLATFORM;
   const normalizedHelps = Array.isArray(helps) ? helps : [];
-  const options = isTelegram
-    ? { parse_mode: 'HTML', disable_web_page_preview: true }
-    : {};
+  const options = isTelegram ? { parse_mode: 'HTML', disable_web_page_preview: true } : {};
 
   const levelNumber = level?.Number ?? '';
   const levelNameRaw = String(level?.Name || '').trim();
@@ -2101,12 +2300,12 @@ function buildTaskMessage(platform, { level, taskFragments, helps, timeoutRemain
     : `📜 Задание уровня №${levelNumber}${levelName ? ` — ${levelName}` : ''}`;
 
   const timeoutLine = timeoutRemain
-    ? (isTelegram
+    ? isTelegram
       ? `<i>До автоперехода осталось: ${escapeHtml(timeoutRemain)}</i>`
-      : `До автоперехода осталось: ${timeoutRemain}`)
+      : `До автоперехода осталось: ${timeoutRemain}`
     : '';
 
-  const renderTaskFragment = (text) => {
+  const renderTaskFragment = text => {
     if (formatted) {
       if (isTelegram) {
         return sanitizeHtmlForTelegram(text);
@@ -2128,8 +2327,12 @@ function buildTaskMessage(platform, { level, taskFragments, helps, timeoutRemain
     }
   } else {
     bodyMain = formatted
-      ? (isTelegram ? '<i>Текст задания недоступен.</i>' : 'Текст задания недоступен.')
-      : (isTelegram ? '<blockquote>Текст задания недоступен.</blockquote>' : 'Текст задания недоступен.');
+      ? isTelegram
+        ? '<i>Текст задания недоступен.</i>'
+        : 'Текст задания недоступен.'
+      : isTelegram
+        ? '<blockquote>Текст задания недоступен.</blockquote>'
+        : 'Текст задания недоступен.';
   }
 
   const helpsSections = [];
@@ -2138,20 +2341,24 @@ function buildTaskMessage(platform, { level, taskFragments, helps, timeoutRemain
     const label = number ? `💡 Подсказка ${number}` : '💡 Подсказка';
     const remainStr = formatRemain(help.remainSeconds);
     const helpContent = formatted
-      ? (isTelegram ? sanitizeHtmlForTelegram(help.text) : stripHtml(help.text))
-      : (isTelegram ? escapeHtml(help.text) : help.text);
+      ? isTelegram
+        ? sanitizeHtmlForTelegram(help.text)
+        : stripHtml(help.text)
+      : isTelegram
+        ? escapeHtml(help.text)
+        : help.text;
 
     if (isTelegram) {
       if (formatted) {
-        const remainLine = remainStr ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>` : '';
-        helpsSections.push(
-          `<b>${label}</b>\n${helpContent}${remainLine}`
-        );
+        const remainLine = remainStr
+          ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>`
+          : '';
+        helpsSections.push(`<b>${label}</b>\n${helpContent}${remainLine}`);
       } else {
-        const remainLine = remainStr ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>` : '';
-        helpsSections.push(
-          `<b>${label}</b>\n<blockquote>${helpContent}</blockquote>${remainLine}`
-        );
+        const remainLine = remainStr
+          ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>`
+          : '';
+        helpsSections.push(`<b>${label}</b>\n<blockquote>${helpContent}</blockquote>${remainLine}`);
       }
     } else {
       let section = `${label}\n${helpContent}`;
@@ -2162,9 +2369,7 @@ function buildTaskMessage(platform, { level, taskFragments, helps, timeoutRemain
     }
   }
 
-  const helpsBlock = helpsSections.length > 0
-    ? helpsSections.join('\n\n')
-    : '';
+  const helpsBlock = helpsSections.length > 0 ? helpsSections.join('\n\n') : '';
 
   const sections = [header];
   if (timeoutLine) {
@@ -2293,7 +2498,8 @@ function sanitizeHtmlForTelegram(html) {
   text = text
     .replace(/&nbsp;/gi, ' ')
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, '\'').replace(/&apos;/gi, '\'')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
     .replace(/&ndash;/gi, '-')
     .replace(/&mdash;/gi, '-')
     .replace(/&hellip;/gi, '...')
@@ -2336,7 +2542,8 @@ function stripHtml(input) {
   text = text
     .replace(/&nbsp;/gi, ' ')
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, '\'').replace(/&apos;/gi, '\'')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
     .replace(/&ndash;/gi, '-')
     .replace(/&mdash;/gi, '-')
     .replace(/&hellip;/gi, '...')
@@ -2364,9 +2571,12 @@ function formatRemain(seconds) {
   const total = Number(seconds) || 0;
   if (total <= 0) return '';
   let s = Math.floor(total);
-  const days = Math.floor(s / 86400); s %= 86400;
-  const hours = Math.floor(s / 3600); s %= 3600;
-  const minutes = Math.floor(s / 60); s %= 60;
+  const days = Math.floor(s / 86400);
+  s %= 86400;
+  const hours = Math.floor(s / 3600);
+  s %= 3600;
+  const minutes = Math.floor(s / 60);
+  s %= 60;
   const parts = [];
   if (days > 0) parts.push(`${days}д`);
   if (hours > 0) parts.push(`${hours}ч`);
@@ -2494,7 +2704,9 @@ async function sendOrUpdateMessage(platform, userId, text, messageId = null, opt
         const elapsed = now - throttle.lastUpdate;
 
         if (elapsed < 2000) {
-          console.log(`⏳ Throttle: откладываю обновление сообщения (прошло ${elapsed}ms < 2000ms)`);
+          logger.info(
+            `⏳ Throttle: откладываю обновление сообщения (прошло ${elapsed}ms < 2000ms)`
+          );
 
           if (throttle.timeout) {
             clearTimeout(throttle.timeout);
@@ -2511,20 +2723,29 @@ async function sendOrUpdateMessage(platform, userId, text, messageId = null, opt
 
           throttle.timeout = setTimeout(async () => {
             try {
-              await editPlatformMessage(platform, userId, messageId, throttle.pendingText, throttle.pendingOptions || {});
+              await editPlatformMessage(
+                platform,
+                userId,
+                messageId,
+                throttle.pendingText,
+                throttle.pendingOptions || {}
+              );
               throttle.lastUpdate = Date.now();
               throttle.pendingText = null;
               throttle.pendingOptions = null;
               throttle.timeout = null;
-              console.log('✅ Отложенное обновление сообщения выполнено');
+              logger.info('✅ Отложенное обновление сообщения выполнено');
               scheduleThrottleCleanup(throttleKey, throttle);
             } catch (err) {
-              if (err.code === 'ETELEGRAM' && err.response?.body?.description?.includes('message is not modified')) {
-                console.log('⏭️ Отложенное обновление: сообщение не изменилось');
+              if (
+                err.code === 'ETELEGRAM' &&
+                err.response?.body?.description?.includes('message is not modified')
+              ) {
+                logger.info('⏭️ Отложенное обновление: сообщение не изменилось');
               } else if (err.response?.statusCode === 429) {
-                console.log('⚠️ Rate limit при отложенном обновлении, пропускаем');
+                logger.info('⚠️ Rate limit при отложенном обновлении, пропускаем');
               } else {
-                console.error('❌ Ошибка отложенного обновления:', err.message);
+                logger.error('❌ Ошибка отложенного обновления:', err.message);
               }
               throttle.pendingText = null;
               throttle.pendingOptions = null;
@@ -2553,23 +2774,26 @@ async function sendOrUpdateMessage(platform, userId, text, messageId = null, opt
 
     return await sendPlatformMessage(platform, userId, text, options);
   } catch (error) {
-    if (error.code === 'ETELEGRAM' && error.response?.body?.description?.includes('message is not modified')) {
-      console.log('⏭️ Сообщение не изменилось, пропускаем обновление');
+    if (
+      error.code === 'ETELEGRAM' &&
+      error.response?.body?.description?.includes('message is not modified')
+    ) {
+      logger.info('⏭️ Сообщение не изменилось, пропускаем обновление');
       return messageId;
     }
 
     if (error.response?.statusCode === 429) {
-      console.log('⚠️ Rate limit (429), пропускаем обновление сообщения');
+      logger.info('⚠️ Rate limit (429), пропускаем обновление сообщения');
       return messageId;
     }
 
     if (messageId && /не поддерживает editMessage/i.test(error.message || '')) {
-      console.log(`[${platform}] Транспорт не поддерживает обновление сообщений, отправляю новое`);
+      logger.info(`[${platform}] Транспорт не поддерживает обновление сообщений, отправляю новое`);
       return await sendPlatformMessage(platform, userId, text, options);
     }
 
     if (messageId && error.response?.status === 400) {
-      console.log('📤 Отправляем новое сообщение вместо обновления');
+      logger.info('📤 Отправляем новое сообщение вместо обновления');
       return await sendPlatformMessage(platform, userId, text, options);
     }
 
@@ -2579,47 +2803,6 @@ async function sendOrUpdateMessage(platform, userId, text, messageId = null, opt
 
 // Отправка ответа в игру Encounter
 // Функция для парсинга ссылки на игру
-function parseGameUrl(url) {
-  try {
-    // Проверяем правильность ссылки и извлекаем домен и ID игры
-    const urlObj = new URL(url);
-    const domain = `${urlObj.protocol}//${urlObj.hostname}`;
-    
-    // Тип 1: https://tech.en.cx/GameDetails.aspx?gid=80646
-    if (urlObj.pathname.includes('/GameDetails.aspx') && urlObj.searchParams.has('gid')) {
-      const gameId = urlObj.searchParams.get('gid');
-      return {
-        success: true,
-        domain: domain,
-        gameId: gameId,
-        type: 'GameDetails'
-      };
-    }
-    
-    // Тип 2: https://tech.en.cx/gameengines/encounter/play/80646/
-    const playMatch = urlObj.pathname.match(/\/gameengines\/encounter\/play\/(\d+)\/?$/);
-    if (playMatch) {
-      return {
-        success: true,
-        domain: domain,
-        gameId: playMatch[1],
-        type: 'Play'
-      };
-    }
-    
-    return {
-      success: false,
-      message: 'Неправильная ссылка на игру. Поддерживаются только:\n• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n• https://domain.en.cx/gameengines/encounter/play/XXXXX/'
-    };
-    
-  } catch (error) {
-    return {
-      success: false,
-      message: 'Неправильный формат ссылки. Пример: https://tech.en.cx/GameDetails.aspx?gid=80646'
-    };
-  }
-}
-
 // Проверка авторизации
 async function checkAuthentication(login, password, domain = 'https://world.en.cx') {
   try {
@@ -2627,11 +2810,14 @@ async function checkAuthentication(login, password, domain = 'https://world.en.c
     const result = await api.authenticate(login, password);
     return result; // Возвращаем полный результат, а не только success
   } catch (error) {
-    console.error('Ошибка проверки авторизации:', error.message);
+    logger.error('Ошибка проверки авторизации:', error.message);
     // Если нет домена, принимаем базовую проверку
     return {
       success: login.length > 0 && password.length > 0,
-      message: login.length > 0 && password.length > 0 ? 'Базовая проверка пройдена' : 'Логин или пароль не могут быть пустыми'
+      message:
+        login.length > 0 && password.length > 0
+          ? 'Базовая проверка пройдена'
+          : 'Логин или пароль не могут быть пустыми'
     };
   }
 }
@@ -2668,10 +2854,16 @@ async function showUsersList(chatId, messageId, page = 0) {
     const [keyPlatform, ...restKey] = storageKey.split('::');
     const platform = user.platform || keyPlatform || TELEGRAM_PLATFORM;
     const plainUserId = user.userId || (restKey.length > 0 ? restKey.join('::') : storageKey);
-    const username = user.telegramUsername ? `@${user.telegramUsername}` : user.telegramFirstName || 'Без имени';
+    const username = user.telegramUsername
+      ? `@${user.telegramUsername}`
+      : user.telegramFirstName || 'Без имени';
     const login = user.login || '—';
-    const firstActivity = user.firstActivity ? new Date(user.firstActivity).toLocaleDateString('ru-RU') : '—';
-    const lastActivity = user.lastActivity ? new Date(user.lastActivity).toLocaleString('ru-RU') : '—';
+    const firstActivity = user.firstActivity
+      ? new Date(user.firstActivity).toLocaleDateString('ru-RU')
+      : '—';
+    const lastActivity = user.lastActivity
+      ? new Date(user.lastActivity).toLocaleString('ru-RU')
+      : '—';
 
     message += `<b>${username}</b>\n`;
     message += `ID: <code>${plainUserId}</code>\n`;
@@ -2713,7 +2905,8 @@ async function showModerationMenu(chatId, messageId) {
   const status = adminConfig.moderationEnabled ? 'включена ✅' : 'выключена ❌';
   const buttonText = adminConfig.moderationEnabled ? '❌ Выключить' : '✅ Включить';
 
-  const message = `🔐 <b>Управление модерацией</b>\n\n` +
+  const message =
+    `🔐 <b>Управление модерацией</b>\n\n` +
     `Текущий статус: ${status}\n\n` +
     `Когда модерация включена, доступ к боту имеют только пользователи из белого списка.`;
 
@@ -2805,7 +2998,8 @@ async function showWhitelistMenu(chatId, messageId, page = 0) {
  * Обработка добавления в whitelist
  */
 async function handleWhitelistAdd(chatId, messageId) {
-  const message = `➕ <b>Добавление в белый список</b>\n\n` +
+  const message =
+    `➕ <b>Добавление в белый список</b>\n\n` +
     `Отправьте Encounter логин пользователя:\n\n` +
     `Пример: <code>player123</code>`;
 
@@ -2832,7 +3026,8 @@ async function showAdminMainMenu(chatId) {
   const moderationStatus = adminConfig.moderationEnabled ? 'включена ✅' : 'выключена ❌';
   const whitelistCount = adminConfig.whitelist ? adminConfig.whitelist.length : 0;
 
-  const message = `👑 <b>Админ-панель</b>\n\n` +
+  const message =
+    `👑 <b>Админ-панель</b>\n\n` +
     `👥 Пользователей: ${usersCount}\n` +
     `🔐 Модерация: ${moderationStatus}\n` +
     `📋 Белый список: ${whitelistCount} записей`;
@@ -2851,7 +3046,7 @@ async function showAdminMainMenu(chatId) {
       reply_markup: keyboard
     });
   } catch (error) {
-    console.error('Ошибка отправки админ-меню:', error);
+    logger.error('Ошибка отправки админ-меню:', error);
     await sendMessage(TELEGRAM_PLATFORM, chatId, '❌ Ошибка отображения админ-панели');
   }
 }
@@ -2887,7 +3082,7 @@ function registerTelegramHandlers() {
 
   const commandList = ['reset', 'test', 'admin', 'cancel', 'start'];
 
-  commandList.forEach((command) => {
+  commandList.forEach(command => {
     const regex = new RegExp(`\\/${command}(?:\\s+(.*))?$`, 'i');
     bot.onText(regex, async (msg, match) => {
       const args = match && match[1] ? match[1].trim() : '';
@@ -2899,26 +3094,26 @@ function registerTelegramHandlers() {
       try {
         await handleCommand(context);
       } catch (error) {
-        console.error(`[telegram] Ошибка обработки команды /${command}:`, error);
+        logger.error(`[telegram] Ошибка обработки команды /${command}:`, error);
       }
     });
   });
 
-  bot.on('callback_query', async (query) => {
+  bot.on('callback_query', async query => {
     const context = createTelegramCallbackContext(query);
     try {
       await handleCallback(context);
     } catch (error) {
-      console.error('[telegram] Ошибка обработчика callback_query:', error);
+      logger.error('[telegram] Ошибка обработчика callback_query:', error);
     }
   });
 
-  bot.on('message', async (msg) => {
+  bot.on('message', async msg => {
     const context = createTelegramContext(msg);
     try {
       await handleTextMessage(context);
     } catch (error) {
-      console.error('[telegram] Ошибка обработки сообщения:', error);
+      logger.error('[telegram] Ошибка обработки сообщения:', error);
     }
   });
 }
@@ -2933,8 +3128,9 @@ async function startBot() {
 
   for (const user of userData.values()) {
     const isVkUser = user.platform === VK_PLATFORM;
-    const hasStaleAccumulation = user.isAccumulatingAnswers === true &&
-      (user.accumulationTimer == null) &&
+    const hasStaleAccumulation =
+      user.isAccumulatingAnswers === true &&
+      user.accumulationTimer == null &&
       Array.isArray(user.accumulatedAnswers) &&
       user.accumulatedAnswers.length > 0;
 
@@ -2949,44 +3145,46 @@ async function startBot() {
       clearedVkBuffers += 1;
       clearedVkAnswers += removed;
 
-      console.log(`[vk] Очистка устаревшего буфера накопления для ${user.userId}: удалено ${removed} код(ов)`);
+      logger.info(
+        `[vk] Очистка устаревшего буфера накопления для ${user.userId}: удалено ${removed} код(ов)`
+      );
     }
   }
 
   if (clearedVkBuffers > 0) {
     await saveUserData();
-    console.log(`🧹 Сброшено ${clearedVkBuffers} VK-буфер(ов) накопления (${clearedVkAnswers} кодов)`);
+    logger.info(
+      `🧹 Сброшено ${clearedVkBuffers} VK-буфер(ов) накопления (${clearedVkAnswers} кодов)`
+    );
   }
 
   await loadAdminConfig();
   await telegramAdapter.start();
   bot = telegramAdapter.getBot();
 
-  bot.on('error', (error) => {
-    console.error('Ошибка бота:', error);
+  bot.on('error', error => {
+    logger.error('Ошибка бота:', error);
   });
 
-  bot.on('polling_error', (error) => {
-    console.error('Ошибка polling:', error);
+  bot.on('polling_error', error => {
+    logger.error('Ошибка polling:', error);
   });
 
   registerTransport(TELEGRAM_PLATFORM, {
     sendMessage: (userId, text, options = {}) => bot.sendMessage(userId, text, options),
-    editMessage: (userId, messageId, text, options = {}) => bot.editMessageText(text, {
-      chat_id: userId,
-      message_id: messageId,
-      ...(options || {})
-    }),
+    editMessage: (userId, messageId, text, options = {}) =>
+      bot.editMessageText(text, {
+        chat_id: userId,
+        message_id: messageId,
+        ...(options || {})
+      }),
     deleteMessage: (userId, messageId) => bot.deleteMessage(userId, messageId),
-    sendTyping: (userId) => bot.sendChatAction ? bot.sendChatAction(userId, 'typing') : Promise.resolve(),
+    sendTyping: userId =>
+      bot.sendChatAction ? bot.sendChatAction(userId, 'typing') : Promise.resolve(),
     answerCallback: ({ queryId, ...options }) => bot.answerCallbackQuery(queryId, options)
   });
 
-  ({
-    sendToEncounterAPI,
-    sendAnswerToEncounter,
-    processAnswerQueue
-  } = createAnswerService({
+  ({ sendToEncounterAPI, sendAnswerToEncounter, processAnswerQueue } = createAnswerService({
     EncounterAPI,
     sendMessage: sendPlatformMessage,
     sendOrUpdateMessage,
@@ -2997,8 +3195,8 @@ async function startBot() {
   }));
 
   registerTelegramHandlers();
-  console.log('🤖 Telegram-бот en_off_bot запущен!');
-  console.log('📱 Готов к приему сообщений...');
+  logger.info('🤖 Telegram-бот en_off_bot запущен!');
+  logger.info('📱 Готов к приему сообщений...');
 
   if (VK_GROUP_TOKEN && VK_GROUP_ID) {
     try {
@@ -3049,7 +3247,8 @@ async function startBot() {
           return {
             message_id: response.message_id ?? response,
             peer_id: response.peer_id ?? peerId,
-            conversation_message_id: response.conversation_message_id ?? conversationMessageId ?? null
+            conversation_message_id:
+              response.conversation_message_id ?? conversationMessageId ?? null
           };
         },
         editMessage: async (userId, messageId, text, options = {}) => {
@@ -3089,7 +3288,7 @@ async function startBot() {
             const { eventId, peerId, userId, text } = data;
 
             if (!eventId) {
-              console.warn('[vk] answerCallback: eventId не указан');
+              logger.warn('[vk] answerCallback: eventId не указан');
               return;
             }
 
@@ -3109,12 +3308,12 @@ async function startBot() {
 
             await vkAdapterInstance.vk.api.messages.sendMessageEventAnswer(payload);
           } catch (error) {
-            console.error('[vk] Ошибка answerCallback:', error.message);
+            logger.error('[vk] Ошибка answerCallback:', error.message);
           }
         }
       });
 
-      vkAdapterInstance.onEvent(async (event) => {
+      vkAdapterInstance.onEvent(async event => {
         try {
           if (event.type === PlatformEventType.COMMAND) {
             await handleCommand({
@@ -3147,16 +3346,16 @@ async function startBot() {
             });
           }
         } catch (error) {
-          console.error('[vk] Ошибка обработки события:', error);
+          logger.error('[vk] Ошибка обработки события:', error);
         }
       });
 
-      console.log('🌐 VK-платформа подключена и готова к работе');
+      logger.info('🌐 VK-платформа подключена и готова к работе');
     } catch (error) {
-      console.error('❌ Не удалось запустить VK адаптер:', error);
+      logger.error('❌ Не удалось запустить VK адаптер:', error);
     }
   } else {
-    console.log('ℹ️ VK платформа отключена (нет VK_GROUP_TOKEN или VK_GROUP_ID)');
+    logger.info('ℹ️ VK платформа отключена (нет VK_GROUP_TOKEN или VK_GROUP_ID)');
   }
 }
 
@@ -3164,7 +3363,7 @@ startBot();
 
 // Грациозное завершение работы
 process.on('SIGINT', async () => {
-  console.log('\n🛑 Остановка бота...');
+  logger.info('\n🛑 Остановка бота...');
   await saveUserData();
   await telegramAdapter.stop().catch(() => {});
   if (vkAdapterInstance) {
@@ -3174,7 +3373,7 @@ process.on('SIGINT', async () => {
 });
 
 process.on('SIGTERM', async () => {
-  console.log('\n🛑 Остановка бота...');
+  logger.info('\n🛑 Остановка бота...');
   await saveUserData();
   await telegramAdapter.stop().catch(() => {});
   if (vkAdapterInstance) {
