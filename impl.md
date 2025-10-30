@@ -36,3 +36,13 @@
 - В `plan.md` отмечены чекбоксы Фазы 0; после ревью дополнительно зафиксированы интеграционные тесты, полное форматирование и расширенный датасет.
 - `package.json` дополнен скриптами `test`, `lint`, `format`, `format:all` и `scripts/generate-user-fixture.js` для воспроизводимой генерации данных.
 - Проведён `npm run format:all`, затем `npm run lint` (предупреждения по метрикам) и `npm test` — прогон завершился успешно.
+
+## Фаза 1 — архитектурная сетка и декомпозиция точки входа
+
+- Зафиксирована целевая FSD-схема (`docs/architecture-scheme.md`), на её основе созданы каркасные директории `src/app`, `src/features`, `src/entities`, `src/processes`, `src/shared`.
+- Реализован `src/app/bootstrap/index.js`: загрузка `.env`, пользовательских данных и admin-config, очистка устаревших VK-буферов, регистрация graceful shutdown.
+- Добавлен `src/app/providers/bot-engine.js`, отвечающий за запуск адаптеров, регистрацию транспортов и подписку на события Telegram/VK.
+- Создан сервис `src/services/admin-config.js` для работы с whitelist и кешом ролей.
+- Весь прикладной поток (команды, callback, текст) перенесён в `src/features/router.js`; модуль экспортирует `registerTelegramHandlers`, `handleCommand`, `handleCallback`, `handleTextMessage`, а также предоставляет `setPlatformConfig`/`setAnswerServiceApi`.
+- Корневой `index.js` теперь только вызывает `main` из `src/app/index.js`; сам `main` занимается сборкой зависимостей, запуском `bot-engine` и инициализацией `answer-service`.
+- Проверки: `npm run lint` (ожидаемые предупреждения о сложности в крупных модулях) и `npm test` (17 сценариев) — успешно.
