@@ -62,6 +62,375 @@ class EncounterAPI {
     this.authCallback = authCallback; // Callback для централизованной авторизации с мьютексом
   }
 
+  async _loadLevelContext({ gameId, authCookies, login, password, baseContext }) {
+    let levelData = this._getLevelFromCache(gameId, login);
+    let model = null;
+    let newCookies = null;
+
+    if (levelData) {
+      this._log('info', 'Использую кеш Encounter уровня', {
+        ...baseContext,
+        levelId: levelData.levelId,
+        levelNumber: levelData.levelNumber
+      });
+      return { levelData, model, newCookies };
+    }
+
+    this._log('info', 'Кеша Encounter нет, получаю состояние игры', baseContext);
+    const gameState = await this.getGameState(gameId, authCookies, login, password);
+
+    if (!gameState?.success) {
+      throw new EncounterError('Не удалось получить состояние игры', { code: 'GAME_STATE_FAILED' });
+    }
+
+    model = gameState.data;
+    newCookies = gameState.newCookies || null;
+
+    const level = this._extractLevelFromModel(gameId, model, login, baseContext);
+
+    this._saveLevelToCache(gameId, level, login);
+    levelData = {
+      levelId: level.LevelId,
+      levelNumber: level.Number,
+      isPassed: level.IsPassed
+    };
+
+    return { levelData, model, newCookies };
+  }
+
+  _extractLevelFromModel(gameId, model, login, baseContext) {
+    if (!model || typeof model !== 'object') {
+      this._log('error', 'Encounter вернул некорректный ответ (model отсутствует)', {
+        ...baseContext,
+        payload: this._serializePayloadSnippet(model)
+      });
+      throw new EncounterError('Не удалось получить состояние игры', { code: 'GAME_STATE_FAILED' });
+    }
+
+    this._log('info', 'Получено состояние Encounter', {
+      ...baseContext,
+      event: model.Event ?? null
+    });
+
+    if (model.Event === undefined || model.Event === null) {
+      this._log('error', 'Encounter вернул состояние без Event', {
+        ...baseContext,
+        payload: this._serializePayloadSnippet(model)
+      });
+      throw new EncounterError('Сервер вернул некорректные данные (Event не определен)', {
+        code: 'INVALID_EVENT'
+      });
+    }
+
+    if (model.Event !== 0) {
+      const eventMessages = {
+        1: 'Неизвестная ошибка',
+        2: 'Игра с указанным ID не существует',
+        3: 'Запрошенная игра не соответствует типу Encounter',
+        4: 'Игрок не авторизован - требуется повторный вход',
+        5: 'Игра не началась - ожидайте начала игры',
+        6: 'Игра закончилась',
+        7: 'Не подана заявка игроком - подайте заявку на участие',
+        8: 'Не подана заявка командой - команда должна подать заявку',
+        9: 'Игрок еще не принят в игру - ожидайте подтверждения',
+        10: 'У игрока нет команды - вступите в команду',
+        11: 'Игрок не активен в команде - активируйтесь в команде',
+        12: 'В игре нет уровней',
+        13: 'Превышено количество участников в команде',
+        14: 'Игрок заблокирован',
+        15: 'Команда заблокирована',
+        16: 'Уровень изменился',
+        17: 'Игра закончена'
+      };
+
+      const errorMsg = eventMessages[model.Event] || `Неизвестная ошибка игры (код ${model.Event})`;
+      this._log('warn', 'Encounter сообщил о событии в состоянии игры', {
+        ...baseContext,
+        event: model.Event,
+        message: errorMsg
+      });
+
+      if (model.Event === 16) {
+        this._invalidateLevelCache(gameId, 'уровень изменился', login);
+      }
+
+      throw new EncounterError(errorMsg, { code: 'LEVEL_STATE_ERROR' });
+    }
+
+    const level = model.Level;
+
+    if (!level) {
+      this._log('error', 'Encounter не вернул данные уровня', {
+        ...baseContext,
+        payload: this._serializePayloadSnippet(model)
+      });
+      throw new EncounterError('Не удалось получить данные уровня', { code: 'LEVEL_DATA_MISSING' });
+    }
+
+    this._log('info', 'Состояние Encounter уровня получено', {
+      ...baseContext,
+      levelId: level.LevelId,
+      levelNumber: level.Number,
+      levelPassed: level.IsPassed
+    });
+
+    if (level.IsPassed) {
+      this._invalidateLevelCache(gameId, 'уровень пройден', login);
+      throw new EncounterError(`Уровень ${level.Number} уже пройден`, {
+        code: 'LEVEL_COMPLETED',
+        retryable: false
+      });
+    }
+
+    if (level.Dismissed) {
+      this._invalidateLevelCache(gameId, 'уровень снят', login);
+      throw new EncounterError(`Уровень ${level.Number} снят администратором`, {
+        code: 'LEVEL_DISMISSED',
+        retryable: false
+      });
+    }
+
+    return level;
+  }
+
+  _ensureLevelNotBlocked(model, levelData, baseContext) {
+    if (!model || !model.Level || !model.Level.HasAnswerBlockRule) {
+      return;
+    }
+
+    if (model.Level.BlockDuration > 0) {
+      const minutes = Math.floor(model.Level.BlockDuration / 60);
+      const seconds = model.Level.BlockDuration % 60;
+      const timeStr = minutes > 0 ? `${minutes}м ${seconds}с` : `${seconds}с`;
+
+      this._log('warn', 'Encounter заблокировал ответы на уровне', {
+        ...baseContext,
+        levelId: levelData.levelId,
+        levelNumber: levelData.levelNumber,
+        blockDuration: model.Level.BlockDuration,
+        blockTimeLeft: timeStr
+      });
+      throw new EncounterError(
+        `⏰ Блокировка ответов на уровне ${levelData.levelNumber}. Осталось: ${timeStr}`,
+        { code: 'LEVEL_LOCKED', retryable: true }
+      );
+    }
+
+    this._log('info', 'Encounter сообщает о настройке блокировки (не активна)', {
+      ...baseContext,
+      levelId: levelData.levelId,
+      levelNumber: levelData.levelNumber
+    });
+  }
+
+  async _ensureLevelCurrentBeforeSend({
+    gameId,
+    authCookies,
+    login,
+    password,
+    expectedLevelId,
+    currentLevelIdFromState,
+    currentLevelNumberFromState,
+    answer,
+    baseContext
+  }) {
+    const verifyState = await this.getGameState(gameId, authCookies, login, password);
+
+    if (!verifyState.success || !verifyState.data || !verifyState.data.Level) {
+      return;
+    }
+
+    const currentLevelId = verifyState.data.Level.LevelId;
+    const currentLevelNumber = verifyState.data.Level.Number;
+
+    this._log('info', 'Финальная проверка уровня перед отправкой ответа', {
+      ...baseContext,
+      expectedLevelId,
+      currentLevelId,
+      currentLevelNumber
+    });
+
+    if (currentLevelId !== expectedLevelId) {
+      const expectedLevelNumber =
+        expectedLevelId === currentLevelIdFromState ? currentLevelNumberFromState : '?';
+
+      this._log('warn', 'Encounter сообщил о смене уровня перед отправкой', {
+        ...baseContext,
+        expectedLevelNumber,
+        currentLevelNumber,
+        currentLevelId,
+        expectedLevelId
+      });
+
+      throw new LevelChangedError(
+        `Уровень изменился (ожидался ${expectedLevelNumber}, текущий ${currentLevelNumber})`,
+        {
+          oldLevel: expectedLevelNumber,
+          newLevel: currentLevelNumber,
+          answer
+        }
+      );
+    }
+
+    this._log('info', 'Уровень актуален, продолжаем отправку', {
+      ...baseContext,
+      currentLevelId,
+      currentLevelNumber
+    });
+  }
+
+  async _executeSendAnswerRequest({ gameId, levelData, answer, cookieString, baseContext }) {
+    const endpoint = `${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`;
+    const postData = new URLSearchParams({
+      LevelId: levelData.levelId.toString(),
+      LevelNumber: levelData.levelNumber.toString(),
+      'LevelAction.Answer': answer
+    });
+
+    this._log('debug', 'POST запрос к Encounter для отправки ответа', {
+      ...baseContext,
+      endpoint,
+      levelId: levelData.levelId,
+      levelNumber: levelData.levelNumber
+    });
+
+    const response = await axios.post(endpoint, postData, {
+      timeout: this.timeout,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json, text/html, */*',
+        Cookie: cookieString,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    this._log('info', 'Ответ Encounter на отправку ответа получен', {
+      ...baseContext,
+      status: response.status,
+      event: response.data?.Event ?? null
+    });
+
+    return response;
+  }
+
+  _analyzeLevelAction({ result, levelData, baseContext, gameId, login }) {
+    const engineAction = result.EngineAction;
+    const levelAction = engineAction?.LevelAction;
+
+    if (!levelAction) {
+      this._log('warn', 'Encounter не вернул LevelAction', {
+        ...baseContext,
+        payload: this._serializePayloadSnippet(result)
+      });
+      return {
+        isCorrect: false,
+        message: '❌ Ответ не обработан - нет данных о результате',
+        level: result.Level,
+        engineAction,
+        levelAction
+      };
+    }
+
+    this._log('debug', 'Encounter LevelAction получен', {
+      ...baseContext,
+      levelId: levelData.levelId,
+      levelNumber: levelData.levelNumber,
+      answerEcho: levelAction.Answer,
+      isCorrectAnswer: levelAction.IsCorrectAnswer
+    });
+
+    let isCorrect = false;
+    let message = 'Ответ отправлен';
+
+    if (levelAction.IsCorrectAnswer !== null) {
+      isCorrect = levelAction.IsCorrectAnswer;
+      message = isCorrect ? '✅ Правильный ответ!' : '❌ Неправильный ответ';
+
+      this._log('info', 'Encounter оценил ответ', {
+        ...baseContext,
+        levelId: levelData.levelId,
+        levelNumber: levelData.levelNumber,
+        isCorrect
+      });
+    } else {
+      this._log('warn', 'Encounter не обработал ответ (IsCorrectAnswer = null)', baseContext);
+      message = '⚠️ Ответ не был обработан - проверьте правильность отправки';
+    }
+
+    if (result.Level && result.Level.IsPassed) {
+      message += ' 🎉 Уровень пройден!';
+      this._log('info', 'Encounter сообщает о прохождении уровня', {
+        ...baseContext,
+        levelNumber: result.Level.Number,
+        levelId: result.Level.LevelId
+      });
+      this._invalidateLevelCache(gameId, 'уровень пройден', login);
+      isCorrect = true;
+    }
+
+    if (result.Event && [16, 18, 19, 20, 21, 22].includes(result.Event)) {
+      this._invalidateLevelCache(gameId, `Event ${result.Event} - уровень изменился`, login);
+    }
+
+    return {
+      isCorrect,
+      message,
+      level: result.Level,
+      engineAction,
+      levelAction
+    };
+  }
+
+  _interpretAnswerResponse({ result, levelData, baseContext, answer, gameId, login }) {
+    if (
+      typeof result === 'string' &&
+      (result.includes('<html') || result.includes('<!DOCTYPE'))
+    ) {
+      this._log('warn', 'Encounter вернул HTML при отправке ответа (сессия истекла)', baseContext);
+      throw new AuthRequiredError('Требуется повторная авторизация (сессия истекла)');
+    }
+
+    if (result.Event === 4) {
+      this._log('warn', 'Encounter сообщает об отсутствии авторизации при отправке', baseContext);
+      throw new AuthRequiredError('Игрок не авторизован');
+    }
+
+    if (result.Event === undefined || result.Event === null) {
+      this._log('warn', 'Encounter вернул ответ без Event', {
+        ...baseContext,
+        payload: this._serializePayloadSnippet(result)
+      });
+    } else if (result.Event !== 0) {
+      if ([16, 18, 19, 20, 21, 22].includes(result.Event)) {
+        this._log('info', 'Encounter сообщил о смене уровня после отправки', {
+          ...baseContext,
+          event: result.Event
+        });
+      } else {
+        throw new EncounterError(`Ошибка отправки ответа (код ${result.Event})`, {
+          code: 'ANSWER_FAILED',
+          retryable: true
+        });
+      }
+    }
+
+    const analysis = this._analyzeLevelAction({
+      result,
+      levelData,
+      baseContext,
+      gameId,
+      login
+    });
+
+    return {
+      isCorrect: analysis.isCorrect,
+      message: analysis.message,
+      level: analysis.level,
+      engineAction: analysis.engineAction,
+      levelAction: analysis.levelAction
+    };
+  }
+
   _log(level, message, context = {}) {
     const logLevel = typeof logger[level] === 'function' ? level : 'info';
     const payload = { domain: this.domain, ...context };
@@ -127,6 +496,92 @@ class EncounterAPI {
     } catch (err) {
       logger.warn('Не удалось сериализовать payload Encounter', { error: err });
       return '[unserializable payload]';
+    }
+  }
+
+  _buildCookieString(cookies = {}) {
+    return Object.entries(cookies)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('; ');
+  }
+
+  _shouldAttemptAuthRetry(error, login, password, isRetry) {
+    return error instanceof AuthRequiredError && login && password && !isRetry;
+  }
+
+  async _performReauthentication(login, password, authCookies = {}, baseContext = {}) {
+    this._log('info', 'Запускаю попытку реаутентификации Encounter', {
+      login: this._maskLogin(login),
+      ...baseContext
+    });
+
+    let authResult;
+
+    if (this.authCallback) {
+      this._log('info', 'Использую централизованную авторизацию с мьютексом', {
+        login: this._maskLogin(login),
+        ...baseContext
+      });
+      authResult = await this.authCallback();
+    } else {
+      this._log('warn', 'Fallback: прямая авторизация без мьютекса', {
+        login: this._maskLogin(login),
+        ...baseContext
+      });
+      authResult = await this.authenticate(login, password);
+    }
+
+    if (!authResult?.success) {
+      const message = authResult?.message || 'Не удалось выполнить авторизацию';
+      throw Object.assign(
+        new AuthRequiredError(`Автоматическая реаутентификация не удалась: ${message}`),
+        { reAuthFailed: true, authMessage: message }
+      );
+    }
+
+    return {
+      ...authResult,
+      cookies: {
+        ...(authCookies || {}),
+        ...(authResult.cookies || {})
+      }
+    };
+  }
+
+  async _fetchGameState(gameId, cookieString, baseContext) {
+    const url = `${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`;
+
+    this._log('info', 'Запрос состояния игры', {
+      ...baseContext,
+      url,
+      cookiesPreview: cookieString.substring(0, 80)
+    });
+
+    const response = await axios.get(url, {
+      timeout: this.timeout,
+      headers: {
+        Cookie: cookieString,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    this._log('info', 'Ответ Encounter на запрос состояния игры получен', {
+      ...baseContext,
+      status: response.status
+    });
+
+    return response;
+  }
+
+  _ensureGameStateAuthorized(data, baseContext) {
+    if (typeof data === 'string' && (data.includes('<html') || data.includes('<!DOCTYPE'))) {
+      this._log('warn', 'Encounter вернул HTML вместо JSON для состояния игры', baseContext);
+      throw new AuthRequiredError('Требуется авторизация (сессия истекла)');
+    }
+
+    if (data && typeof data === 'object' && data.Event === 4) {
+      this._log('warn', 'Encounter сообщает, что игрок не авторизован (Event 4)', baseContext);
+      throw new AuthRequiredError('Требуется авторизация');
     }
   }
 
@@ -519,44 +974,15 @@ class EncounterAPI {
       // Rate limiting: ждём минимум 1.2 сек с последнего запроса к этому домену
       await this._waitRateLimit();
 
-      const cookieString = Object.entries(authCookies)
-        .map(([key, value]) => `${key}=${value}`)
-        .join('; ');
-
-      const url = `${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`;
-
-      this._log('info', 'Запрос состояния игры', {
+      const baseContext = {
         gameId,
-        login: this._maskLogin(login),
-        url,
-        cookiesPreview: cookieString.substring(0, 80)
-      });
-
-      const response = await axios.get(url, {
-        timeout: this.timeout,
-        headers: {
-          Cookie: cookieString,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-
-      this._log('info', 'Успешный ответ Encounter при получении состояния', {
-        gameId,
-        login: this._maskLogin(login),
-        status: response.status
-      });
+        login: this._maskLogin(login)
+      };
+      const cookieString = this._buildCookieString(authCookies);
+      const response = await this._fetchGameState(gameId, cookieString, baseContext);
 
       const data = response.data;
-
-      // Если сервер вернул HTML (страница логина) вместо JSON — сессия истекла/нет авторизации
-      if (typeof data === 'string' && (data.includes('<html') || data.includes('<!DOCTYPE'))) {
-        throw new AuthRequiredError('Требуется авторизация (сессия истекла)');
-      }
-
-      // Если явно пришел Event=4 — не авторизован
-      if (data && typeof data === 'object' && data.Event === 4) {
-        throw new AuthRequiredError('Требуется авторизация');
-      }
+      this._ensureGameStateAuthorized(data, baseContext);
 
       return {
         success: true,
@@ -564,68 +990,26 @@ class EncounterAPI {
       };
     } catch (error) {
       // Если сессия истекла И есть данные для реаутентификации И это не повторная попытка
-      if (error instanceof AuthRequiredError && login && password && !isRetry) {
-        this._log('info', 'Сессия Encounter истекла, пытаюсь реаутентизацию', {
-          gameId,
-          login: this._maskLogin(login)
-        });
-
+      if (this._shouldAttemptAuthRetry(error, login, password, isRetry)) {
         try {
-          let authResult;
-
-          // Используем authCallback если он есть (с мьютексом), иначе прямую авторизацию
-          if (this.authCallback) {
-            this._log('info', 'Использую централизованную авторизацию с мьютексом', {
-              gameId,
-              login: this._maskLogin(login)
-            });
-            authResult = await this.authCallback();
-          } else {
-            this._log('warn', 'Fallback: прямая авторизация без мьютекса', {
-              gameId,
-              login: this._maskLogin(login)
-            });
-            authResult = await this.authenticate(login, password);
+          const authResult = await this._performReauthentication(login, password, authCookies, {
+            gameId,
+            login: this._maskLogin(login)
+          });
+          const retryState = await this.getGameState(
+            gameId,
+            authResult.cookies,
+            login,
+            password,
+            true
+          );
+          if (retryState && retryState.success) {
+            retryState.newCookies = authResult.cookies;
           }
-
-          if (authResult.success) {
-            this._log('info', 'Автоматическая реаутентификация успешна', {
-              gameId,
-              login: this._maskLogin(login)
-            });
-            const mergedCookies = {
-              ...(authCookies || {}),
-              ...(authResult.cookies || {})
-            };
-            // Повторяем запрос с обновлёнными cookies (isRetry=true чтобы избежать бесконечной рекурсии)
-            const retryState = await this.getGameState(
-              gameId,
-              mergedCookies,
-              login,
-              password,
-              true
-            );
-            if (retryState && retryState.success) {
-              retryState.newCookies = mergedCookies;
-            }
-            return retryState;
-          } else {
-            // Реаутентификация не удалась - пробрасываем ошибку дальше
-            const reAuthError = new AuthRequiredError(
-              `Автоматическая реаутентификация не удалась: ${authResult.message}`
-            );
-            reAuthError.reAuthFailed = true;
-            reAuthError.authMessage = authResult.message;
-            throw reAuthError;
-          }
+          return retryState;
         } catch (authError) {
-          // Ошибка при реаутентификации - пробрасываем дальше
-          if (!authError.reAuthFailed) {
-            const wrappedError = new AuthRequiredError(
-              `Ошибка автоматической реаутентификации: ${authError.message}`
-            );
-            wrappedError.reAuthFailed = true;
-            throw wrappedError;
+          if (!(authError instanceof AuthRequiredError) || !authError.reAuthFailed) {
+            throw authError;
           }
           throw authError;
         }
@@ -661,179 +1045,25 @@ class EncounterAPI {
     };
 
     try {
-      // Проверяем наличие cookies авторизации
       if (!authCookies || Object.keys(authCookies).length === 0) {
         throw new AuthRequiredError(
           'Отсутствуют данные авторизации. Необходимо повторно авторизоваться.'
         );
       }
 
-      // Пытаемся получить данные уровня из кеша
-      let levelData = this._getLevelFromCache(gameId, login);
-      let model = null;
-
-      if (levelData) {
-        // Используем кешированные данные
-        this._log('info', 'Использую кеш Encounter уровня', {
-          ...baseContext,
-          levelId: levelData.levelId,
-          levelNumber: levelData.levelNumber
-        });
-      } else {
-        // Кеша нет - получаем состояние игры (с автореаутентификацией)
-        this._log('info', 'Кеша Encounter нет, запрашиваю состояние игры', baseContext);
-        const gameState = await this.getGameState(gameId, authCookies, login, password);
-
-        if (!gameState.success) {
-          throw new EncounterError('Не удалось получить состояние игры', { code: 'GAME_STATE_FAILED' });
-        }
-
-        model = gameState.data;
-
-        // Проверяем если сервер вернул HTML вместо JSON (страница логина)
-        if (
-          typeof model === 'string' &&
-          (model.includes('<html>') || model.includes('<!DOCTYPE'))
-        ) {
-          this._log('warn', 'Encounter вернул HTML при получении состояния (сессия истекла)', baseContext);
-          throw new AuthRequiredError('Требуется повторная авторизация (сессия истекла)');
-        }
-
-        // Подробная проверка состояния игры согласно документации API
-        this._log('info', 'Получено состояние Encounter', {
-          ...baseContext,
-          event: model?.Event ?? null
-        });
-
-        // Проверяем наличие Event в ответе
-        if (model.Event === undefined || model.Event === null) {
-          this._log('error', 'Некорректный ответ Encounter: событие не определено', {
-            ...baseContext,
-            payload: this._serializePayloadSnippet(model)
-          });
-          throw new EncounterError('Сервер вернул некорректные данные (Event не определен)', { code: 'INVALID_EVENT' });
-        }
-
-        if (model.Event !== 0) {
-          const eventMessages = {
-            1: 'Неизвестная ошибка',
-            2: 'Игра с указанным ID не существует',
-            3: 'Запрошенная игра не соответствует типу Encounter',
-            4: 'Игрок не авторизован - требуется повторный вход',
-            5: 'Игра не началась - ожидайте начала игры',
-            6: 'Игра закончилась',
-            7: 'Не подана заявка игроком - подайте заявку на участие',
-            8: 'Не подана заявка командой - команда должна подать заявку',
-            9: 'Игрок еще не принят в игру - ожидайте подтверждения',
-            10: 'У игрока нет команды - вступите в команду',
-            11: 'Игрок не активен в команде - активируйтесь в команде',
-            12: 'В игре нет уровней',
-            13: 'Превышено количество участников в команде',
-            14: 'Игрок заблокирован',
-            15: 'Команда заблокирована',
-            16: 'Уровень изменился',
-            17: 'Игра закончена'
-          };
-
-          const errorMsg =
-            eventMessages[model.Event] || `Неизвестная ошибка игры (код ${model.Event})`;
-          this._log('warn', 'Encounter сообщил о проблеме в состоянии игры', {
-            ...baseContext,
-            event: model.Event,
-            message: errorMsg
-          });
-
-          // Если уровень изменился - инвалидируем кеш
-          if (model.Event === 16) {
-            this._invalidateLevelCache(gameId, 'уровень изменился');
-          }
-
-          throw new EncounterError(errorMsg, { code: 'LEVEL_STATE_ERROR' });
-        }
-
-          const level = model.Level;
-          this._log('info', 'Состояние Encounter уровня получено', {
-            ...baseContext,
-            levelId: level.LevelId,
-            levelNumber: level.Number,
-            levelPassed: level.IsPassed
-          });
-
-          // Подробная проверка состояния уровня согласно документации API
-          if (level.IsPassed) {
-            this._log('info', 'Encounter сообщает, что уровень уже пройден', {
-              ...baseContext,
-              levelId: level.LevelId,
-              levelNumber: level.Number
-            });
-            this._invalidateLevelCache(gameId, 'уровень пройден', null);
-          throw new EncounterError(`Уровень ${level.Number} уже пройден`, {
-            code: 'LEVEL_COMPLETED',
-            retryable: false
-          });
-          }
-
-          if (level.Dismissed) {
-            this._log('warn', 'Encounter сообщает, что уровень снят администратором', {
-              ...baseContext,
-              levelId: level.LevelId,
-              levelNumber: level.Number
-            });
-            this._invalidateLevelCache(gameId, 'уровень снят', null);
-          throw new EncounterError(`Уровень ${level.Number} снят администратором`, {
-            code: 'LEVEL_DISMISSED',
-            retryable: false
-          });
-        }
-
-        // Сохраняем данные уровня в кеш
-        this._saveLevelToCache(gameId, level, login);
-        levelData = {
-          levelId: level.LevelId,
-          levelNumber: level.Number,
-          isPassed: level.IsPassed
-        };
-      }
-
-      // Проверка блокировки ответов (только если получали свежее состояние игры)
-      if (model && model.Level && model.Level.HasAnswerBlockRule) {
-        if (model.Level.BlockDuration > 0) {
-          const minutes = Math.floor(model.Level.BlockDuration / 60);
-          const seconds = model.Level.BlockDuration % 60;
-          const timeStr = minutes > 0 ? `${minutes}м ${seconds}с` : `${seconds}с`;
-
-          this._log('warn', 'Encounter заблокировал ответы на уровне', {
-            ...baseContext,
-            levelId: levelData.levelId,
-            levelNumber: levelData.levelNumber,
-            blockDuration: model.Level.BlockDuration,
-            blockTimeLeft: timeStr
-          });
-        throw new EncounterError(
-          `⏰ Блокировка ответов на уровне ${levelData.levelNumber}. Осталось: ${timeStr}`,
-          { code: 'LEVEL_LOCKED', retryable: true }
-        );
-        } else {
-          this._log('info', 'Encounter сообщает о настройке блокировки (не активна)', {
-            ...baseContext,
-            levelId: levelData.levelId,
-            levelNumber: levelData.levelNumber
-          });
-        }
-      }
-
-      this._log('info', 'Уровень готов к приёму ответов', {
-        ...baseContext,
-        levelId: levelData.levelId,
-        levelNumber: levelData.levelNumber
+      const { levelData, model, newCookies } = await this._loadLevelContext({
+        gameId,
+        authCookies,
+        login,
+        password,
+        baseContext
       });
+      const effectiveCookies = newCookies || authCookies;
 
-      // Определяем ожидаемый levelId для проверки
+      this._ensureLevelNotBlocked(model, levelData, baseContext);
+
       const currentLevelIdFromState = levelData.levelId;
       const currentLevelNumberFromState = levelData.levelNumber;
-
-      // Если expectedLevelId передан явно, используем его
-      // Иначе используем текущий из состояния
       const expectedLevelIdForCheck = expectedLevelId || currentLevelIdFromState;
 
       this._log('info', 'Проверяю соответствие уровня перед отправкой ответа', {
@@ -842,12 +1072,8 @@ class EncounterAPI {
         currentLevelId: currentLevelIdFromState
       });
 
-      // Формируем cookie строку
-      const cookieString = Object.entries(authCookies)
-        .map(([key, value]) => `${key}=${value}`)
-        .join('; ');
+      const cookieString = this._buildCookieString(effectiveCookies);
 
-      // Отправляем ответ согласно документации API
       this._log('info', 'Отправляю ответ в Encounter', {
         ...baseContext,
         levelId: levelData.levelId,
@@ -855,253 +1081,84 @@ class EncounterAPI {
         answerLength: answer?.length ?? 0
       });
 
-      // ВАЖНО: Проверяем уровень ПЕРЕД отправкой (защита от смены уровня)
       this._log('info', 'Повторная проверка актуальности уровня перед отправкой', baseContext);
-      const verifyState = await this.getGameState(gameId, authCookies, login, password);
-      if (verifyState.success && verifyState.data && verifyState.data.Level) {
-        const currentLevelId = verifyState.data.Level.LevelId;
-        const currentLevelNumber = verifyState.data.Level.Number;
+      await this._ensureLevelCurrentBeforeSend({
+        gameId,
+        authCookies: effectiveCookies,
+        login,
+        password,
+        expectedLevelId: expectedLevelIdForCheck,
+        currentLevelIdFromState,
+        currentLevelNumberFromState,
+        answer,
+        baseContext
+      });
 
-        this._log('info', 'Финальная проверка уровня перед отправкой ответа', {
-          ...baseContext,
-          expectedLevelId: expectedLevelIdForCheck,
-          currentLevelId,
-          currentLevelNumber
-        });
-
-        // Проверяем изменение уровня относительно ОЖИДАЕМОГО уровня
-        if (currentLevelId !== expectedLevelIdForCheck) {
-          // Пытаемся определить номер ожидаемого уровня для сообщения
-          const expectedLevelNumber =
-            expectedLevelId === currentLevelIdFromState ? currentLevelNumberFromState : '?';
-
-          this._log('warn', 'Encounter сообщил о смене уровня перед отправкой', {
-            ...baseContext,
-            expectedLevelNumber,
-            currentLevelNumber,
-            currentLevelId,
-            expectedLevelId: expectedLevelIdForCheck
-          });
-          throw new LevelChangedError(
-            `Уровень изменился (ожидался ${expectedLevelNumber}, текущий ${currentLevelNumber})`,
-            {
-              oldLevel: expectedLevelNumber,
-              newLevel: currentLevelNumber,
-              answer
-            }
-          );
-        }
-
-        this._log('info', 'Уровень актуален, продолжаем отправку', {
-          ...baseContext,
-          currentLevelId,
-          currentLevelNumber
-        });
-      }
-
-      // Rate limiting: ждём минимум 1.2 сек с последнего запроса к этому домену
       await this._waitRateLimit();
 
-      const postData = new URLSearchParams({
-        LevelId: levelData.levelId.toString(),
-        LevelNumber: levelData.levelNumber.toString(),
-        'LevelAction.Answer': answer
-      });
-
-      this._log('debug', 'POST запрос к Encounter для отправки ответа', {
-        ...baseContext,
-        levelId: levelData.levelId,
-        levelNumber: levelData.levelNumber,
-        endpoint: `/GameEngines/Encounter/Play/${gameId}?json=1`
-      });
-
-      const response = await axios.post(
-        `${this.domain}/GameEngines/Encounter/Play/${gameId}?json=1`,
-        postData,
-        {
-          timeout: this.timeout,
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Accept: 'application/json, text/html, */*',
-            Cookie: cookieString,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          }
-        }
-      );
-
-      this._log('info', 'Ответ Encounter на отправку ответа получен', {
-        ...baseContext,
-        event: response.data?.Event ?? null,
-        status: response.status
+      const response = await this._executeSendAnswerRequest({
+        gameId,
+        levelData,
+        answer,
+        cookieString,
+        baseContext
       });
 
       const result = response.data;
-
-      // Проверяем если сервер вернул HTML вместо JSON (страница логина)
-      if (
-        typeof result === 'string' &&
-        (result.includes('<html>') || result.includes('<!DOCTYPE'))
-      ) {
-        this._log('warn', 'Encounter вернул HTML при отправке ответа (сессия истекла)', baseContext);
-        throw new AuthRequiredError('Требуется повторная авторизация (сессия истекла)');
-      }
-
-      // Проверяем Event=4 (не авторизован)
-      if (result.Event === 4) {
-        this._log('warn', 'Encounter сообщает об отсутствии авторизации при отправке', baseContext);
-        throw new AuthRequiredError('Игрок не авторизован');
-      }
-
-      // Проверяем результат
-      if (result.Event === undefined || result.Event === null) {
-        this._log('warn', 'Encounter вернул ответ без Event', {
-          ...baseContext,
-          payload: this._serializePayloadSnippet(result)
-        });
-        // Продолжаем анализ LevelAction вместо ошибки
-      } else if (result.Event !== 0) {
-        // Если уровень изменился - это нормально
-        if ([16, 18, 19, 20, 21, 22].includes(result.Event)) {
-          this._log('info', 'Encounter сообщил о смене уровня после отправки', {
-            ...baseContext,
-            event: result.Event
-          });
-        } else {
-          throw new EncounterError(`Ошибка отправки ответа (код ${result.Event})`, {
-            code: 'ANSWER_FAILED',
-            retryable: true
-          });
-        }
-      }
-
-      // Проверяем результат ответа
-      const engineAction = result.EngineAction;
-      const levelAction = engineAction?.LevelAction;
-
-      let isCorrect = false;
-      let message = 'Ответ отправлен';
-
-      if (levelAction) {
-        // Проверяем правильность ответа согласно документации
-        this._log('debug', 'Encounter LevelAction получен', {
-          ...baseContext,
-          levelId: levelData.levelId,
-          levelNumber: levelData.levelNumber,
-          answerEcho: levelAction.Answer,
-          isCorrectAnswer: levelAction.IsCorrectAnswer
-        });
-
-        if (levelAction.IsCorrectAnswer !== null) {
-          isCorrect = levelAction.IsCorrectAnswer;
-          message = isCorrect ? '✅ Правильный ответ!' : '❌ Неправильный ответ';
-
-          this._log('info', 'Encounter оценил ответ', {
-            ...baseContext,
-            levelId: levelData.levelId,
-            levelNumber: levelData.levelNumber,
-            isCorrect
-          });
-        } else {
-          this._log('warn', 'Encounter не обработал ответ (IsCorrectAnswer = null)', baseContext);
-          message = '⚠️ Ответ не был обработан - проверьте правильность отправки';
-        }
-
-        // Проверяем был ли пройден уровень
-        if (result.Level && result.Level.IsPassed) {
-          message += ' 🎉 Уровень пройден!';
-          this._log('info', 'Encounter сообщает о прохождении уровня', {
-            ...baseContext,
-            levelNumber: result.Level.Number,
-            levelId: result.Level.LevelId
-          });
-          // Инвалидируем кеш - уровень изменился
-          this._invalidateLevelCache(gameId, 'уровень пройден', null);
-        }
-
-        // Если Event изменился (уровень изменился) - инвалидируем кеш
-        if (result.Event && [16, 18, 19, 20, 21, 22].includes(result.Event)) {
-          this._invalidateLevelCache(gameId, `Event ${result.Event} - уровень изменился`);
-        }
-      } else {
-        this._log('warn', 'Encounter не вернул LevelAction', {
-          ...baseContext,
-          payload: this._serializePayloadSnippet(result)
-        });
-        message = '❌ Ответ не обработан - нет данных о результате';
-      }
+      const analysis = this._interpretAnswerResponse({
+        result,
+        levelData,
+        baseContext,
+        answer,
+        gameId,
+        login
+      });
 
       return {
         success: true,
-        correct: isCorrect,
-        message: message,
+        correct: analysis.isCorrect,
+        message: analysis.message,
         levelNumber: levelData.levelNumber,
         data: result,
-        level: result.Level,
-        newCookies: null // Cookies не обновлялись
+        level: analysis.level,
+        newCookies: newCookies || null
       };
     } catch (error) {
       if (!isRetry) {
-        this._invalidateLevelCache(gameId, 'ошибка отправки ответа');
+        this._invalidateLevelCache(gameId, 'ошибка отправки ответа', login);
       }
 
-      // Если сессия истекла И есть данные для реаутентификации И это не повторная попытка
-      if (error instanceof AuthRequiredError && login && password && !isRetry) {
+      if (this._shouldAttemptAuthRetry(error, login, password, isRetry)) {
         this._log('info', 'Сессия Encounter истекла при отправке ответа, выполняю реаутентизацию', {
           ...baseContext,
           err: error
         });
 
         try {
-          let authResult;
+          const authResult = await this._performReauthentication(
+            login,
+            password,
+            authCookies,
+            baseContext
+          );
+          this._log('info', 'Автоматическая реаутентификация успешна, повторяю отправку ответа', baseContext);
 
-          // Используем authCallback если он есть (с мьютексом), иначе прямую авторизацию
-          if (this.authCallback) {
-            this._log('info', 'Использую централизованную авторизацию с мьютексом', baseContext);
-            authResult = await this.authCallback();
-          } else {
-            this._log('warn', 'Fallback: прямая авторизация без мьютекса', baseContext);
-            authResult = await this.authenticate(login, password);
+          const retryResult = await this.sendAnswer(
+            gameId,
+            answer,
+            authResult.cookies,
+            login,
+            password,
+            true,
+            expectedLevelId
+          );
+          if (retryResult && retryResult.success) {
+            retryResult.newCookies = authResult.cookies;
           }
-
-          if (authResult.success) {
-            this._log('info', 'Автоматическая реаутентификация успешна, повторяю отправку ответа', baseContext);
-            const mergedCookies = {
-              ...(authCookies || {}),
-              ...(authResult.cookies || {})
-            };
-            // Повторяем отправку ответа с обновлёнными cookies (isRetry=true чтобы избежать бесконечной рекурсии)
-            // ВАЖНО: передаем expectedLevelId для сохранения проверки уровня
-            const retryResult = await this.sendAnswer(
-              gameId,
-              answer,
-              mergedCookies,
-              login,
-              password,
-              true,
-              expectedLevelId
-            );
-            // Добавляем информацию о новых cookies для обновления в основном коде
-            retryResult.newCookies = mergedCookies;
-            return retryResult;
-          } else {
-            throw Object.assign(
-              new AuthRequiredError(
-                `Автоматическая реаутентификация не удалась: ${authResult.message}`,
-                { details: { gameId } }
-              ),
-              { reAuthFailed: true, authMessage: authResult.message }
-            );
-          }
+          return retryResult;
         } catch (authError) {
-          // Ошибка при реаутентификации - пробрасываем дальше
           if (!(authError instanceof AuthRequiredError) || !authError.reAuthFailed) {
-            throw Object.assign(
-              new AuthRequiredError(
-                `Ошибка автоматической реаутентификации: ${authError.message}`,
-                { details: { gameId } }
-              ),
-              { reAuthFailed: true }
-            );
+            throw authError;
           }
           throw authError;
         }
@@ -1111,6 +1168,7 @@ class EncounterAPI {
         ...baseContext,
         err: error
       });
+
       throw this._normalizeNetworkError(error, {
         operation: 'sendAnswer',
         context: { gameId, expectedLevelId }

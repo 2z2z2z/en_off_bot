@@ -1,4 +1,5 @@
 const { LevelChangedError } = require('../../core/encounter-errors');
+const { createInlineKeyboard } = require('../../presentation/keyboard-factory');
 
 const PLURAL_FORMS = ['ответ', 'ответа', 'ответов'];
 
@@ -91,32 +92,12 @@ async function detectLevelChange({
   };
   await saveUserData();
 
-  let options = {};
-
-  if (platform === 'telegram') {
-    options = {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: `Отправить в уровень ${newLevel}`, callback_data: 'answer_send' },
-            { text: 'Отменить', callback_data: 'answer_cancel' }
-          ]
-        ]
-      }
-    };
-  } else if (platform === 'vk') {
-    options = {
-      keyboard: {
-        type: 'inline',
-        buttons: [
-          [
-            { label: `Отправить в уровень ${newLevel}`, payload: { action: 'answer_send' } },
-            { label: 'Отменить', payload: { action: 'answer_cancel' } }
-          ]
-        ]
-      }
-    };
-  }
+  const options = createInlineKeyboard(platform, [
+    [
+      { text: `Отправить в уровень ${newLevel}`, action: 'answer_send' },
+      { text: 'Отменить', action: 'answer_cancel' }
+    ]
+  ]);
 
   const messageText =
     `⚠️ Уровень изменился (${oldLevel} → ${newLevel})\n\n` +

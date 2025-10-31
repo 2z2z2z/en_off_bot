@@ -126,21 +126,20 @@
       - [x] Подключить хелпер к `getGameState` и `sendAnswer`
       - [x] Использовать хелпер в прочих методах (`getGamesList`, `checkConnection`, `getGameInfo`)
 
-- [ ] **Фаза 5: Presentation-слой** (минимальные правки — см. [раздел 3.5](refactoring.md#35-платформенные-адаптеры-и-событийная-шина))
+- [x] **Фаза 5: Presentation-слой** (минимальные правки — см. [раздел 3.5](refactoring.md#35-платформенные-адаптеры-и-событийная-шина))
 
   **Текущее состояние:** PlatformAdapter и событийная архитектура УЖЕ реализованы на 80-90%.
-  - [ ] **Фабрика клавиатур:**
-    - [ ] Создать `src/presentation/keyboard-factory.js`:
+  - [x] **Фабрика клавиатур:**
+    - [x] Создать `src/presentation/keyboard-factory.js`:
       - `createInlineKeyboard(buttons, platform)` — inline-клавиатуры telegram/vk
       - `createReplyKeyboard(buttons, platform)` — reply-клавиатуры
-    - [ ] Заменить разбросанные `if (platform === 'telegram')` на вызовы фабрики
+    - [x] Заменить разбросанные `if (platform === 'telegram')` на вызовы фабрики
 
-  - [ ] **Форматирование сообщений:**
-    - [ ] Создать `src/presentation/message-formatter.js`:
-      - `formatLevelInfo(levelData, platform)` — HTML для Telegram, plain text для VK
-      - `formatProgress(progress, platform)` — форматирование прогресса
-      - `formatError(error, platform)` — форматирование ошибок
-    - [ ] Вынести форматирование из бизнес-логики в presentation-слой
+  - [x] **Форматирование сообщений:**
+    - [x] Создать `src/presentation/message-formatter.js`:
+      - `formatTaskMessage`, `formatSectorsMessage`, `formatBatchProgress` — единый слой представления
+      - Общие хелперы (`collectTaskFragments`, `collectHelps`, `splitMessageBody`) для reuse
+    - [x] Вынести форматирование из бизнес-логики в presentation-слой
 
 - [ ] **Фаза 6: Whitelist и админка** (средний приоритет — см. [раздел 3.6](refactoring.md#36-админка-и-whitelist))
   - [ ] Вынести whitelist в отдельный сервис `src/services/whitelist-service.js`:
@@ -184,7 +183,7 @@
 
 Закладывал это как «параллельный» долг, но закрывать лучше после критичных фаз: сперва Фаза 3 (SQLite, без неё архитектура всё равно сыровата), затем Фаза 4 (Encounter API). Когда данные и транспорт будут чётко разделены, возвращаемся к техническому долгу — декомпозируем `router/encounter/user-store` и закрываем предупреждения линтера отдельным блоком.
 
-- [ ] Снизить комплексность `src/features/router.js` (декомпозиция `handleCallback`, `processBatchSend`, presentation-слой)
-- [ ] Декомпозировать `encounter-api.js` (повторяющиеся retry и обработка ошибок)
-- [ ] Упростить `src/core/user-store.js` (загрузка/сохранение, распределить в репозитории/сервисы)
-- [ ] Убрать дублирование клавиатур в `src/platforms/vk/vk-adapter.js` (unused vars, фабрика клавиатур)
+- [x] Снизить комплексность `src/features/router.js` (декомпозиция `handleCallback`, `processBatchSend`, presentation-слой)
+- [x] Декомпозировать `encounter-api.js` (повторяющиеся retry и обработка ошибок)
+- [x] Упростить `src/core/user-store.js` (загрузка/сохранение, распределить в репозитории/сервисы)
+- [x] Убрать дублирование клавиатур в `src/platforms/vk/vk-adapter.js` (unused vars, фабрика клавиатур)

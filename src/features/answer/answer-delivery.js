@@ -14,6 +14,7 @@ const {
   LevelChangedError,
   EncounterError
 } = require('../../core/encounter-errors');
+const { createInlineKeyboard } = require('../../presentation/keyboard-factory');
 
 const ACCUMULATION_TIMEOUT_MS = 5000;
 const MAX_RETRIES = 2;
@@ -109,73 +110,22 @@ function classifyError(error) {
 }
 
 function createDecisionButtons(platform, levelNumber) {
-  if (platform === 'telegram') {
-    return {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: `Отправить в уровень ${levelNumber}`,
-              callback_data: 'queue_send'
-            },
-            { text: 'Очистить очередь', callback_data: 'queue_clear' }
-          ]
-        ]
-      }
-    };
-  }
-
-  if (platform === 'vk') {
-    return {
-      keyboard: {
-        type: 'inline',
-        buttons: [
-          [
-            {
-              label: `Отправить в уровень ${levelNumber}`,
-              payload: { action: 'queue_send' }
-            },
-            { label: 'Очистить очередь', payload: { action: 'queue_clear' } }
-          ]
-        ]
-      }
-    };
-  }
-
-  return {};
+  return createInlineKeyboard(platform, [
+    [
+      { text: `Отправить в уровень ${levelNumber}`, action: 'queue_send' },
+      { text: 'Очистить очередь', action: 'queue_clear' }
+    ]
+  ]);
 }
 
 function createAccumulationButtons(platform) {
-  if (platform === 'telegram') {
-    return {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '✅ Отправить все', callback_data: 'batch_send_all' },
-            { text: '🚫 Отменить все', callback_data: 'batch_cancel_all' }
-          ],
-          [{ text: '📋 Список', callback_data: 'batch_list' }]
-        ]
-      }
-    };
-  }
-
-  if (platform === 'vk') {
-    return {
-      keyboard: {
-        type: 'inline',
-        buttons: [
-          [
-            { label: '✅ Отправить все', payload: { action: 'batch_send_all' } },
-            { label: '🚫 Отменить все', payload: { action: 'batch_cancel_all' } }
-          ],
-          [{ label: '📋 Список', payload: { action: 'batch_list' } }]
-        ]
-      }
-    };
-  }
-
-  return {};
+  return createInlineKeyboard(platform, [
+    [
+      { text: '✅ Отправить все', action: 'batch_send_all' },
+      { text: '🚫 Отменить все', action: 'batch_cancel_all' }
+    ],
+    [{ text: '📋 Список', action: 'batch_list' }]
+  ]);
 }
 
 /**

@@ -4,6 +4,20 @@ const { parseGameUrl } = require('../utils/parse-game-url');
 const { BURST_WINDOW } = require('./answer/burst-detector');
 const { createBatchBuffer } = require('./answer/batch-buffer');
 const {
+  createInlineKeyboard,
+  createReplyKeyboard
+} = require('../presentation/keyboard-factory');
+const {
+  formatSectorsMessage,
+  collectTaskFragments,
+  collectHelps,
+  formatTaskMessage,
+  splitMessageBody,
+  formatBatchProgress,
+  formatStatusText,
+  formatRemain
+} = require('../presentation/message-formatter');
+const {
   userData,
   saveUserData,
   getUserInfo,
@@ -24,7 +38,6 @@ const { ensureAuthenticated, createAuthCallback } = require('../core/auth-manage
 const { getAdminConfig, getWhitelistCache, saveAdminConfig } = require('../services/admin-config');
 
 let TELEGRAM_PLATFORM = 'telegram';
-let VK_PLATFORM = 'vk';
 let ROOT_USER_ID = 197924096;
 let sendAnswerToEncounter = async () => {
   throw new Error('Answer service API не инициализирован');
@@ -33,12 +46,9 @@ let processAnswerQueue = async () => {
   throw new Error('Answer service API не инициализирован');
 };
 
-const setPlatformConfig = ({ telegram, vk, rootUserId } = {}) => {
+const setPlatformConfig = ({ telegram, vk: _vk, rootUserId } = {}) => {
   if (telegram) {
     TELEGRAM_PLATFORM = telegram;
-  }
-  if (vk) {
-    VK_PLATFORM = vk;
   }
   if (rootUserId) {
     ROOT_USER_ID = rootUserId;
@@ -1017,37 +1027,12 @@ async function processBatchSend(platform, userId) {
         `Накоплено ${totalCodes} ${totalCodes === 1 ? 'код' : totalCodes < 5 ? 'кода' : 'кодов'}:\n${codesList}${moreCodesText}\n\n` +
         `Что делать?`;
 
-      let options = {};
-      if (platform === 'telegram') {
-        options = {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: `✅ Отправить в уровень ${currentLevelNumber}`,
-                  callback_data: 'batch_send_force'
-                },
-                { text: '🚫 Отменить', callback_data: 'batch_cancel_all' }
-              ]
-            ]
-          }
-        };
-      } else if (platform === 'vk') {
-        options = {
-          keyboard: {
-            type: 'inline',
-            buttons: [
-              [
-                {
-                  label: `✅ Отправить в уровень ${currentLevelNumber}`,
-                  payload: { action: 'batch_send_force' }
-                },
-                { label: '🚫 Отменить', payload: { action: 'batch_cancel_all' } }
-              ]
-            ]
-          }
-        };
-      }
+      const options = createInlineKeyboard(platform, [
+        [
+          { text: `✅ Отправить в уровень ${currentLevelNumber}`, action: 'batch_send_force' },
+          { text: '🚫 Отменить', action: 'batch_cancel_all' }
+        ]
+      ]);
 
       await sendMessage(platform, userId, messageText, options);
       return;
@@ -1070,35 +1055,6 @@ async function processBatchSend(platform, userId) {
       return `${passed}/${required}`;
     };
 
-    const buildBatchProgressMessage = ({
-      progress,
-      total,
-      answer,
-      statusText,
-      levelNumber,
-      sectorsText
-    }) => {
-      const levelDisplay = levelNumber ?? '—';
-      const safeAnswer = answer ?? '—';
-      const lines = [
-        `📤 Отправка пачки: ${progress}/${total}`,
-        `💬 "${safeAnswer}": ${statusText}`,
-        `🎯 Уровень: ${levelDisplay}`
-      ];
-      if (sectorsText && sectorsText !== '—') {
-        lines.push(`📊 Сектора: ${sectorsText}`);
-      }
-      return lines.join('\n');
-    };
-
-    const buildStatusText = rawMessage => {
-      const message = rawMessage || 'Отправлен';
-      const lower = message.toLowerCase();
-      const isNegative = lower.includes('невер') || lower.includes('ошиб');
-      const emoji = isNegative ? '👎' : '👍';
-      return `${emoji} ${message}`;
-    };
-
     let latestLevelNumber = currentLevelNumber ?? null;
     let latestPassed = normalizeCount(gameState.data.Level?.PassedSectorsCount);
     let latestRequired = normalizeCount(gameState.data.Level?.RequiredSectorsCount);
@@ -1109,7 +1065,7 @@ async function processBatchSend(platform, userId) {
     const batchCopy = [...user.accumulatedAnswers];
     const sentCodes = []; // Статистика отправленных кодов
 
-    const initialMessage = buildBatchProgressMessage({
+    const initialMessage = formatBatchProgress({
       progress: 0,
       total: totalCodes,
       answer: batchCopy[0]?.answer ?? '—',
@@ -1126,7 +1082,7 @@ async function processBatchSend(platform, userId) {
 
       logger.info(`📤 Отправка кода ${i + 1}/${totalCodes}: "${item.answer}"`);
 
-      const sendingMessage = buildBatchProgressMessage({
+      const sendingMessage = formatBatchProgress({
         progress: processed,
         total: totalCodes,
         answer: item.answer,
@@ -1158,8 +1114,8 @@ async function processBatchSend(platform, userId) {
             latestRequired = normalizeCount(result.level.RequiredSectorsCount);
           }
 
-          const statusText = buildStatusText(result.message);
-          const statusMessage = buildBatchProgressMessage({
+          const statusText = formatStatusText(result.message);
+          const statusMessage = formatBatchProgress({
             progress: processed,
             total: totalCodes,
             answer: item.answer,
@@ -1205,37 +1161,12 @@ async function processBatchSend(platform, userId) {
               `Оставшиеся коды: ${remainingList}${moreText}\n\n` +
               `Что делать с оставшимися кодами?`;
 
-            let options = {};
-            if (platform === 'telegram') {
-              options = {
-                reply_markup: {
-                  inline_keyboard: [
-                    [
-                      {
-                        text: `✅ Отправить в уровень ${result.level.Number}`,
-                        callback_data: 'batch_send_force'
-                      },
-                      { text: '🚫 Отменить', callback_data: 'batch_cancel_all' }
-                    ]
-                  ]
-                }
-              };
-            } else if (platform === 'vk') {
-              options = {
-                keyboard: {
-                  type: 'inline',
-                  buttons: [
-                    [
-                      {
-                        label: `✅ Отправить в уровень ${result.level.Number}`,
-                        payload: { action: 'batch_send_force' }
-                      },
-                      { label: '🚫 Отменить', payload: { action: 'batch_cancel_all' } }
-                    ]
-                  ]
-                }
-              };
-            }
+            const options = createInlineKeyboard(platform, [
+              [
+                { text: `✅ Отправить в уровень ${result.level.Number}`, action: 'batch_send_force' },
+                { text: '🚫 Отменить', action: 'batch_cancel_all' }
+              ]
+            ]);
 
             await sendMessage(platform, userId, messageText, options);
             break;
@@ -1247,7 +1178,7 @@ async function processBatchSend(platform, userId) {
           }
         } else {
           const statusText = `❌ ${result.message || 'Не отправлен'}`;
-          const statusMessage = buildBatchProgressMessage({
+          const statusMessage = formatBatchProgress({
             progress: processed,
             total: totalCodes,
             answer: item.answer,
@@ -1289,7 +1220,7 @@ async function processBatchSend(platform, userId) {
 
         // Для других ошибок - продолжаем
         const statusText = `❌ Ошибка: ${error.message}`;
-        const statusMessage = buildBatchProgressMessage({
+        const statusMessage = formatBatchProgress({
           progress: processed,
           total: totalCodes,
           answer: item.answer,
@@ -1658,7 +1589,9 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
       const passedCount = Number(level.PassedSectorsCount) || 0;
       const leftToClose = Math.max(totalRequired - passedCount, 0);
 
-      const sectorsMessage = buildSectorsMessage(platform, {
+      const sectorsMessage = formatSectorsMessage({
+        platform,
+        telegramPlatform: TELEGRAM_PLATFORM,
         sectors,
         totalRequired,
         totalCount: sectors.length,
@@ -1846,7 +1779,9 @@ async function sendLevelTask(platform, userId, user, formatted) {
     const helps = collectHelps(level.Helps, { formatted });
     const timeoutRemain = formatRemain(level.TimeoutSecondsRemain);
 
-    const taskMessage = buildTaskMessage(platform, {
+    const taskMessage = formatTaskMessage({
+      platform,
+      telegramPlatform: TELEGRAM_PLATFORM,
       level,
       taskFragments,
       helps,
@@ -1902,492 +1837,16 @@ const MAIN_MENU_LAYOUT = [
 ];
 
 function createMainKeyboard(platform) {
-  if (platform === TELEGRAM_PLATFORM) {
-    return {
-      reply_markup: {
-        keyboard: MAIN_MENU_LAYOUT.map(row => [...row]),
-        resize_keyboard: true,
-        one_time_keyboard: false
-      }
-    };
-  }
+  const buttons = MAIN_MENU_LAYOUT.map(row =>
+    row.map(label => ({
+      text: label,
+      action: label,
+      payload: { type: 'main_menu', value: label },
+      color: 'secondary'
+    }))
+  );
 
-  if (platform === VK_PLATFORM) {
-    const buttons = MAIN_MENU_LAYOUT.map(row =>
-      row.map(label => ({
-        action: {
-          type: 'text',
-          label,
-          payload: JSON.stringify({ type: 'main_menu', value: label })
-        },
-        color: 'secondary'
-      }))
-    );
-
-    return {
-      keyboard: {
-        type: 'reply',
-        buttons,
-        oneTime: false
-      }
-    };
-  }
-
-  return {};
-}
-
-function buildSectorsMessage(
-  platform,
-  { sectors, totalRequired, totalCount, passedCount, leftToClose }
-) {
-  const isTelegram = platform === TELEGRAM_PLATFORM;
-  const options = isTelegram ? { parse_mode: 'HTML', disable_web_page_preview: true } : {};
-
-  if (!Array.isArray(sectors) || sectors.length === 0) {
-    const header = isTelegram ? '<b>🗄 Секторы</b>' : '🗄 Секторы';
-    const text = `${header}\n\nНет данных о секторах.`;
-    return {
-      text,
-      header,
-      body: '',
-      options
-    };
-  }
-
-  const lines = sectors.map(s => {
-    const order = s?.Order ?? '';
-    const nameRaw = s?.Name ?? '';
-    const name = isTelegram ? escapeHtml(nameRaw) : nameRaw;
-    const isAnswered = s?.IsAnswered === true;
-    const answerTextRaw = s?.Answer;
-    const answerText = extractSectorAnswerText(answerTextRaw);
-
-    if (isTelegram) {
-      const safeAnswer = answerText ? `<code>${escapeHtml(answerText)}</code>` : '<code>—</code>';
-      const condition = isAnswered ? `${safeAnswer} ✅` : '<i>...</i>';
-      return `#${order} (${name}) — ${condition}`;
-    }
-
-    const safeAnswer = answerText ? `«${answerText}»` : '—';
-    const condition = isAnswered ? `${safeAnswer} ✅` : '…';
-    return `#${order} (${name}) — ${condition}`;
-  });
-
-  const header = isTelegram
-    ? `<b>🗄 Секторы (обязательных ${totalRequired} из ${totalCount})</b>`
-    : `🗄 Секторы (обязательных ${totalRequired} из ${totalCount})`;
-
-  const summary = isTelegram
-    ? `Закрыто — <b>${passedCount}</b>, осталось — <b>${leftToClose}</b>`
-    : `Закрыто — ${passedCount}, осталось — ${leftToClose}`;
-
-  const body = lines.join('\n');
-  const text = `${header}\n\n${summary}\n\n${body}`;
-
-  return {
-    text,
-    header,
-    body,
-    options
-  };
-}
-
-function collectTaskFragments(tasks, { formatted = false } = {}) {
-  const fragments = [];
-  const field = formatted ? 'TaskTextFormatted' : 'TaskText';
-
-  const addFragment = rawValue => {
-    if (rawValue == null) {
-      return;
-    }
-    const raw = String(rawValue);
-    const presenceCheck = stripHtml(raw).trim();
-    if (presenceCheck.length === 0) {
-      return;
-    }
-    fragments.push(formatted ? raw : raw.trim());
-  };
-
-  if (Array.isArray(tasks)) {
-    for (const task of tasks) {
-      const rawValue = task?.[field] ?? task?.TaskText;
-      addFragment(rawValue);
-    }
-  } else if (tasks && typeof tasks === 'object') {
-    const rawValue = tasks[field] ?? tasks.TaskText;
-    addFragment(rawValue);
-  }
-
-  return fragments;
-}
-
-function collectHelps(helps, { formatted = false } = {}) {
-  const result = [];
-  if (!Array.isArray(helps)) {
-    return result;
-  }
-
-  const field = formatted ? 'HelpTextFormatted' : 'HelpText';
-
-  for (const help of helps) {
-    const rawValue = help?.[field] ?? help?.HelpText ?? '';
-    const raw = String(rawValue);
-    const trimmed = stripHtml(raw).trim();
-    const remainSeconds = help?.RemainSeconds ?? null;
-
-    if (trimmed.length === 0 && (remainSeconds == null || remainSeconds <= 0)) {
-      // Если текста нет и подсказка не ожидается, пропускаем
-      continue;
-    }
-
-    result.push({
-      number: help?.Number ?? '',
-      text: formatted ? raw : raw.trim(),
-      remainSeconds
-    });
-  }
-
-  return result;
-}
-
-function buildTaskMessage(
-  platform,
-  { level, taskFragments, helps, timeoutRemain, formatted = false }
-) {
-  const isTelegram = platform === TELEGRAM_PLATFORM;
-  const normalizedHelps = Array.isArray(helps) ? helps : [];
-  const options = isTelegram ? { parse_mode: 'HTML', disable_web_page_preview: true } : {};
-
-  const levelNumber = level?.Number ?? '';
-  const levelNameRaw = String(level?.Name || '').trim();
-  const levelName = isTelegram ? escapeHtml(levelNameRaw) : levelNameRaw;
-  const header = isTelegram
-    ? `<b>📜 Задание уровня №${levelNumber}${levelName ? ` — ${levelName}` : ''}</b>`
-    : `📜 Задание уровня №${levelNumber}${levelName ? ` — ${levelName}` : ''}`;
-
-  const timeoutLine = timeoutRemain
-    ? isTelegram
-      ? `<i>До автоперехода осталось: ${escapeHtml(timeoutRemain)}</i>`
-      : `До автоперехода осталось: ${timeoutRemain}`
-    : '';
-
-  const renderTaskFragment = text => {
-    if (formatted) {
-      if (isTelegram) {
-        return sanitizeHtmlForTelegram(text);
-      }
-      return stripHtml(text);
-    }
-    return isTelegram ? escapeHtml(text) : text;
-  };
-
-  let bodyMain;
-  if (taskFragments.length > 0) {
-    if (!formatted && isTelegram) {
-      bodyMain = taskFragments
-        .map(fragment => `<blockquote>${renderTaskFragment(fragment)}</blockquote>`)
-        .join('\n\n');
-    } else {
-      const rendered = taskFragments.map(fragment => renderTaskFragment(fragment));
-      bodyMain = rendered.join('\n\n');
-    }
-  } else {
-    bodyMain = formatted
-      ? isTelegram
-        ? '<i>Текст задания недоступен.</i>'
-        : 'Текст задания недоступен.'
-      : isTelegram
-        ? '<blockquote>Текст задания недоступен.</blockquote>'
-        : 'Текст задания недоступен.';
-  }
-
-  const helpsSections = [];
-  for (const help of normalizedHelps) {
-    const number = help.number;
-    const label = number ? `💡 Подсказка ${number}` : '💡 Подсказка';
-    const remainStr = formatRemain(help.remainSeconds);
-    const helpContent = formatted
-      ? isTelegram
-        ? sanitizeHtmlForTelegram(help.text)
-        : stripHtml(help.text)
-      : isTelegram
-        ? escapeHtml(help.text)
-        : help.text;
-
-    if (isTelegram) {
-      if (formatted) {
-        const remainLine = remainStr
-          ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>`
-          : '';
-        helpsSections.push(`<b>${label}</b>\n${helpContent}${remainLine}`);
-      } else {
-        const remainLine = remainStr
-          ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>`
-          : '';
-        helpsSections.push(`<b>${label}</b>\n<blockquote>${helpContent}</blockquote>${remainLine}`);
-      }
-    } else {
-      let section = `${label}\n${helpContent}`;
-      if (remainStr) {
-        section += `\nДо подсказки осталось: ${remainStr}`;
-      }
-      helpsSections.push(section);
-    }
-  }
-
-  const helpsBlock = helpsSections.length > 0 ? helpsSections.join('\n\n') : '';
-
-  const sections = [header];
-  if (timeoutLine) {
-    sections.push(timeoutLine);
-  }
-  if (bodyMain) {
-    sections.push(bodyMain);
-  }
-  if (helpsBlock) {
-    sections.push(helpsBlock);
-  }
-
-  const text = sections.join('\n\n');
-  const body = sections.slice(1).join('\n\n');
-
-  return {
-    text,
-    header,
-    body,
-    options
-  };
-}
-
-function splitMessageBody(text, maxLength) {
-  if (!text) {
-    return [];
-  }
-
-  const chunks = [];
-  for (let i = 0; i < text.length; i += maxLength) {
-    chunks.push(text.slice(i, i + maxLength));
-  }
-  return chunks;
-}
-
-function sanitizeHtmlForTelegram(html) {
-  if (!html) {
-    return '';
-  }
-
-  let text = String(html);
-
-  text = text.replace(/\r\n?/g, '\n');
-  text = text.replace(/<br\s*\/?>/gi, '\n');
-  text = text.replace(/<\/p>/gi, '\n\n');
-  text = text.replace(/<p[^>]*>/gi, '');
-  text = text.replace(/<\/?div[^>]*>/gi, '\n');
-  text = text.replace(/<li[^>]*>/gi, '\n• ');
-  text = text.replace(/<\/li>/gi, '');
-  text = text.replace(/<\/?(ul|ol)[^>]*>/gi, '\n');
-  text = text.replace(/<blockquote[^>]*>/gi, '\n');
-  text = text.replace(/<\/blockquote>/gi, '\n');
-  text = text.replace(/<h([1-6])[^>]*>/gi, '\n<b>');
-  text = text.replace(/<\/h[1-6]>/gi, '</b>\n');
-
-  const replacements = [
-    { from: /<strong[^>]*>/gi, to: '<b>' },
-    { from: /<\/strong>/gi, to: '</b>' },
-    { from: /<em[^>]*>/gi, to: '<i>' },
-    { from: /<\/em>/gi, to: '</i>' },
-    { from: /<ins[^>]*>/gi, to: '<u>' },
-    { from: /<\/ins>/gi, to: '</u>' },
-    { from: /<u[^>]*>/gi, to: '<u>' },
-    { from: /<\/u>/gi, to: '</u>' },
-    { from: /<(?:strike|del)[^>]*>/gi, to: '<s>' },
-    { from: /<\/(?:strike|del)>/gi, to: '</s>' },
-    { from: /<span[^>]*>/gi, to: '' },
-    { from: /<\/span>/gi, to: '' },
-    { from: /<font[^>]*>/gi, to: '' },
-    { from: /<\/font>/gi, to: '' },
-    { from: /<pre[^>]*>/gi, to: '\n<pre>' },
-    { from: /<\/pre>/gi, to: '</pre>\n' },
-    { from: /<code[^>]*>/gi, to: '<code>' },
-    { from: /<\/code>/gi, to: '</code>' }
-  ];
-  for (const { from, to } of replacements) {
-    text = text.replace(from, to);
-  }
-
-  text = text.replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>/gi, '<a href="$1">');
-  text = text.replace(/<\/a>/gi, '</a>');
-
-  const allowedTags = new Set(['b', 'i', 'u', 's', 'code', 'pre', 'a']);
-  text = text.replace(/<([^>]+)>/gi, (match, inner) => {
-    const content = inner.trim();
-    if (!content) {
-      return '';
-    }
-
-    const isClosing = content.startsWith('/');
-    let tagBody = isClosing ? content.slice(1).trim() : content;
-    const isSelfClosing = tagBody.endsWith('/');
-    if (isSelfClosing) {
-      tagBody = tagBody.slice(0, -1).trim();
-    }
-    const tagNameMatch = tagBody.match(/^([a-z0-9]+)/i);
-    if (!tagNameMatch) {
-      return '';
-    }
-    const tagName = tagNameMatch[1].toLowerCase();
-
-    if (tagName === 'br') {
-      return '\n';
-    }
-
-    if (!allowedTags.has(tagName)) {
-      return '';
-    }
-
-    if (isClosing) {
-      return `</${tagName}>`;
-    }
-
-    if (tagName === 'a') {
-      const hrefMatch = tagBody.match(/href\s*=\s*['"]([^'"]+)['"]/i);
-      const href = hrefMatch ? hrefMatch[1] : null;
-      if (!href) {
-        return '';
-      }
-      return `<a href="${href}">`;
-    }
-
-    return `<${tagName}>`;
-  });
-
-  text = text
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&ndash;/gi, '-')
-    .replace(/&mdash;/gi, '-')
-    .replace(/&hellip;/gi, '...')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&amp;/gi, '&');
-
-  text = text.replace(/\t+/g, ' ');
-  text = text.replace(/\n{3,}/g, '\n\n');
-
-  return text.trim();
-}
-
-function stripHtml(input) {
-  if (!input) {
-    return '';
-  }
-
-  let text = String(input);
-
-  text = text.replace(/<br\s*\/?>/gi, '\n');
-  text = text.replace(/<\/p>/gi, '\n\n');
-  text = text.replace(/<p[^>]*>/gi, '');
-  text = text.replace(/<li[^>]*>/gi, '\n• ');
-  text = text.replace(/<\/li>/gi, '');
-  text = text.replace(/<\/?ul[^>]*>/gi, '\n');
-  text = text.replace(/<\/?ol[^>]*>/gi, '\n');
-  text = text.replace(/<\/?blockquote[^>]*>/gi, '\n');
-  text = text.replace(/<\/?strong[^>]*>/gi, '');
-  text = text.replace(/<\/?em[^>]*>/gi, '');
-  text = text.replace(/<\/?span[^>]*>/gi, '');
-  text = text.replace(/<\/?div[^>]*>/gi, '\n');
-  text = text.replace(/<\/?h\d[^>]*>/gi, '\n');
-  text = text.replace(/<\/?table[^>]*>/gi, '\n');
-  text = text.replace(/<\/?tr[^>]*>/gi, '\n');
-  text = text.replace(/<\/?td[^>]*>/gi, '\t');
-  text = text.replace(/<\/?th[^>]*>/gi, '\t');
-  text = text.replace(/<[^>]+>/g, '');
-
-  text = text
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&ndash;/gi, '-')
-    .replace(/&mdash;/gi, '-')
-    .replace(/&hellip;/gi, '...')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&amp;/gi, '&');
-
-  text = text.replace(/\t+/g, ' ');
-  text = text.replace(/\r/g, '');
-  text = text.replace(/\n{3,}/g, '\n\n');
-
-  return text.trim();
-}
-
-// Удалён форматтер HTML, показ оригинального текста задания TaskText
-function escapeHtml(text) {
-  return String(text || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-// Форматирование секунд в д/ч/м/с без нулевых единиц
-function formatRemain(seconds) {
-  const total = Number(seconds) || 0;
-  if (total <= 0) return '';
-  let s = Math.floor(total);
-  const days = Math.floor(s / 86400);
-  s %= 86400;
-  const hours = Math.floor(s / 3600);
-  s %= 3600;
-  const minutes = Math.floor(s / 60);
-  s %= 60;
-  const parts = [];
-  if (days > 0) parts.push(`${days}д`);
-  if (hours > 0) parts.push(`${hours}ч`);
-  if (minutes > 0) parts.push(`${minutes}м`);
-  if (s > 0) parts.push(`${s}с`);
-  return parts.join(' ');
-}
-
-// Попытка извлечь человекочитаемый текст ответа сектора из разных возможных структур
-function extractSectorAnswerText(rawAnswer) {
-  if (rawAnswer == null) return '';
-  if (typeof rawAnswer === 'string') return rawAnswer.trim();
-  if (typeof rawAnswer === 'number' || typeof rawAnswer === 'boolean') return String(rawAnswer);
-  if (Array.isArray(rawAnswer)) {
-    const parts = rawAnswer
-      .map(item => extractSectorAnswerText(item))
-      .filter(v => v && v.trim().length > 0);
-    return parts.join(', ');
-  }
-  // Объект: пробуем типичные поля
-  const candidates = [
-    rawAnswer.Value,
-    rawAnswer.Text,
-    rawAnswer.Answer,
-    rawAnswer.Display,
-    rawAnswer.StringValue,
-    rawAnswer.Name,
-    rawAnswer.Title,
-    rawAnswer.Content
-  ].filter(v => v != null);
-  if (candidates.length > 0) {
-    const first = candidates.find(v => typeof v === 'string') ?? candidates[0];
-    return extractSectorAnswerText(first);
-  }
-  // Последняя попытка: сериализуем простые плоские значения
-  try {
-    const flat = Object.values(rawAnswer)
-      .map(v => (typeof v === 'string' || typeof v === 'number' ? String(v) : ''))
-      .filter(Boolean)
-      .join(' ')
-      .trim();
-    return flat;
-  } catch (_) {
-    return '';
-  }
+  return createReplyKeyboard(platform, buttons, { resize: true, oneTime: false });
 }
 
 /**
@@ -2601,15 +2060,15 @@ async function showUsersList(chatId, messageId, page = 0) {
 
   if (users.length === 0) {
     const message = '👥 <b>Пользователи</b>\n\nПользователей пока нет';
-    const keyboard = {
-      inline_keyboard: [[{ text: '◀️ Назад', callback_data: 'admin_back' }]]
-    };
+    const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, [
+      [{ text: '◀️ Назад', action: 'admin_back' }]
+    ]);
 
     await editTelegramMessage(message, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'HTML',
-      reply_markup: keyboard
+      ...keyboardOptions
     });
     return;
   }
@@ -2640,27 +2099,29 @@ async function showUsersList(chatId, messageId, page = 0) {
   }
 
   // Кнопки навигации
-  const keyboard = { inline_keyboard: [] };
+  const buttons = [];
   const navButtons = [];
 
   if (page > 0) {
-    navButtons.push({ text: '◀️ Назад', callback_data: `admin_users_${page - 1}` });
+    navButtons.push({ text: '◀️ Назад', action: `admin_users_${page - 1}` });
   }
   if (page < totalPages - 1) {
-    navButtons.push({ text: 'Вперед ▶️', callback_data: `admin_users_${page + 1}` });
+    navButtons.push({ text: 'Вперед ▶️', action: `admin_users_${page + 1}` });
   }
 
   if (navButtons.length > 0) {
-    keyboard.inline_keyboard.push(navButtons);
+    buttons.push(navButtons);
   }
 
-  keyboard.inline_keyboard.push([{ text: '🏠 Главное меню', callback_data: 'admin_back' }]);
+  buttons.push([{ text: '🏠 Главное меню', action: 'admin_back' }]);
+
+  const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, buttons);
 
   await editTelegramMessage(message, {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'HTML',
-    reply_markup: keyboard
+    ...keyboardOptions
   });
 }
 
@@ -2676,18 +2137,16 @@ async function showModerationMenu(chatId, messageId) {
     `Текущий статус: ${status}\n\n` +
     `Когда модерация включена, доступ к боту имеют только пользователи из белого списка.`;
 
-  const keyboard = {
-    inline_keyboard: [
-      [{ text: buttonText, callback_data: 'moderation_toggle' }],
-      [{ text: '◀️ Назад', callback_data: 'admin_back' }]
-    ]
-  };
+  const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, [
+    [{ text: buttonText, action: 'moderation_toggle' }],
+    [{ text: '◀️ Назад', action: 'admin_back' }]
+  ]);
 
   await editTelegramMessage(message, {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'HTML',
-    reply_markup: keyboard
+    ...keyboardOptions
   });
 }
 
@@ -2720,7 +2179,7 @@ async function showWhitelistMenu(chatId, messageId, page = 0) {
   }
 
   // Кнопки
-  const keyboard = { inline_keyboard: [] };
+  const keyboardButtons = [];
 
   // Кнопки удаления (только первые 5 на странице для экономии места)
   const removeButtons = [];
@@ -2728,35 +2187,37 @@ async function showWhitelistMenu(chatId, messageId, page = 0) {
     const globalIndex = start + i;
     removeButtons.push({
       text: `🗑️ ${globalIndex + 1}`,
-      callback_data: `whitelist_remove_${globalIndex}`
+      action: `whitelist_remove_${globalIndex}`
     });
   }
 
   if (removeButtons.length > 0) {
     // Разбиваем по 3 кнопки в ряд
     for (let i = 0; i < removeButtons.length; i += 3) {
-      keyboard.inline_keyboard.push(removeButtons.slice(i, i + 3));
+      keyboardButtons.push(removeButtons.slice(i, i + 3));
     }
   }
 
   // Навигация
   const navButtons = [];
   if (page > 0) {
-    navButtons.push({ text: '◀️', callback_data: `admin_whitelist_${page - 1}` });
+    navButtons.push({ text: '◀️', action: `admin_whitelist_${page - 1}` });
   }
-  navButtons.push({ text: '➕ Добавить', callback_data: 'whitelist_add' });
+  navButtons.push({ text: '➕ Добавить', action: 'whitelist_add' });
   if (page < totalPages - 1) {
-    navButtons.push({ text: '▶️', callback_data: `admin_whitelist_${page + 1}` });
+    navButtons.push({ text: '▶️', action: `admin_whitelist_${page + 1}` });
   }
 
-  keyboard.inline_keyboard.push(navButtons);
-  keyboard.inline_keyboard.push([{ text: '◀️ Назад', callback_data: 'admin_back' }]);
+  keyboardButtons.push(navButtons);
+  keyboardButtons.push([{ text: '◀️ Назад', action: 'admin_back' }]);
+
+  const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, keyboardButtons);
 
   await editTelegramMessage(message, {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'HTML',
-    reply_markup: keyboard
+    ...keyboardOptions
   });
 }
 
@@ -2769,15 +2230,15 @@ async function handleWhitelistAdd(chatId, messageId) {
     `Отправьте Encounter логин пользователя:\n\n` +
     `Пример: <code>player123</code>`;
 
-  const keyboard = {
-    inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'admin_whitelist_0' }]]
-  };
+  const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, [
+    [{ text: '❌ Отмена', action: 'admin_whitelist_0' }]
+  ]);
 
   await editTelegramMessage(message, {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'HTML',
-    reply_markup: keyboard
+    ...keyboardOptions
   });
 
   // Устанавливаем состояние ожидания ввода
@@ -2798,18 +2259,16 @@ async function showAdminMainMenu(chatId) {
     `🔐 Модерация: ${moderationStatus}\n` +
     `📋 Белый список: ${whitelistCount} записей`;
 
-  const keyboard = {
-    inline_keyboard: [
-      [{ text: '👥 Пользователи', callback_data: 'admin_users_0' }],
-      [{ text: '🔐 Модерация', callback_data: 'admin_moderation' }],
-      [{ text: '📋 Белый список', callback_data: 'admin_whitelist_0' }]
-    ]
-  };
+  const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, [
+    [{ text: '👥 Пользователи', action: 'admin_users_0' }],
+    [{ text: '🔐 Модерация', action: 'admin_moderation' }],
+    [{ text: '📋 Белый список', action: 'admin_whitelist_0' }]
+  ]);
 
   try {
     await sendMessage(TELEGRAM_PLATFORM, chatId, message, {
       parse_mode: 'HTML',
-      reply_markup: keyboard
+      ...keyboardOptions
     });
   } catch (error) {
     logger.error('Ошибка отправки админ-меню:', error);

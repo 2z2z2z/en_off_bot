@@ -3,6 +3,7 @@ const INITIAL_DELAY_MS = 3000;
 const ITEM_DELAY_MS = 1200;
 const PROGRESS_UPDATE_EVERY = 4;
 const PROGRESS_UPDATE_MIN_INTERVAL = 5000;
+const { createInlineKeyboard } = require('../../presentation/keyboard-factory');
 
 /**
  * @typedef {Object} QueueProcessorDeps
@@ -19,40 +20,12 @@ const PROGRESS_UPDATE_MIN_INTERVAL = 5000;
  */
 
 function createDecisionOptions(platform, levelNumber) {
-  if (platform === 'telegram') {
-    return {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: `Отправить в уровень ${levelNumber}`,
-              callback_data: 'queue_send'
-            },
-            { text: 'Очистить очередь', callback_data: 'queue_clear' }
-          ]
-        ]
-      }
-    };
-  }
-
-  if (platform === 'vk') {
-    return {
-      keyboard: {
-        type: 'inline',
-        buttons: [
-          [
-            {
-              label: `Отправить в уровень ${levelNumber}`,
-              payload: { action: 'queue_send' }
-            },
-            { label: 'Очистить очередь', payload: { action: 'queue_clear' } }
-          ]
-        ]
-      }
-    };
-  }
-
-  return {};
+  return createInlineKeyboard(platform, [
+    [
+      { text: `Отправить в уровень ${levelNumber}`, action: 'queue_send' },
+      { text: 'Очистить очередь', action: 'queue_clear' }
+    ]
+  ]);
 }
 
 function formatDecisionMessage(queue, queuedLevelNumber, currentLevelNumber) {

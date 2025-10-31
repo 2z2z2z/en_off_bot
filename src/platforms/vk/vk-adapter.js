@@ -321,7 +321,7 @@ class VkAdapter extends PlatformAdapter {
       return await this.vk.api.messages.send(payload);
     } catch (error) {
       if (this._isKeyboardUnsupportedError(error) && payload.keyboard) {
-        const { keyboard, ...rest } = payload;
+        const { keyboard: _keyboard, ...rest } = payload;
         logger.warn('[vk] Keyboard unsupported for peer, retrying without keyboard');
         return this.vk.api.messages.send(rest);
       }
@@ -334,7 +334,7 @@ class VkAdapter extends PlatformAdapter {
       return await this.vk.api.messages.edit(payload);
     } catch (error) {
       if (this._isKeyboardUnsupportedError(error) && payload.keyboard) {
-        const { keyboard, ...rest } = payload;
+        const { keyboard: _keyboard, ...rest } = payload;
         logger.warn('[vk] Keyboard unsupported for peer on edit, retrying without keyboard');
         return this.vk.api.messages.edit(rest);
       }

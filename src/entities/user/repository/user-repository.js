@@ -248,86 +248,105 @@ class UserRepository {
     });
   }
 
+  _selectGameSession(get, profileId, gameId) {
+    return get(
+      `SELECT id, created_at
+         FROM game_sessions
+         WHERE profile_id = ? AND game_id = ?`,
+      [profileId, gameId]
+    );
+  }
+
+  _updateExistingGameSession(run, sessionId, payload, timestamp) {
+    run(
+      `UPDATE game_sessions
+         SET auth_cookies = ?,
+             last_level_id = ?,
+             last_level_number = ?,
+             last_level_updated_at = ?,
+             updated_at = ?
+       WHERE id = ?`,
+      [
+        serializeJson(payload.authCookies || null),
+        payload.lastLevelId || null,
+        payload.lastLevelNumber || null,
+        payload.lastLevelUpdatedAt || null,
+        timestamp,
+        sessionId
+      ]
+    );
+  }
+
+  _insertGameSession(run, get, profileId, gameId, payload, timestamp) {
+    run(
+      `INSERT INTO game_sessions (
+         profile_id,
+         game_id,
+         auth_cookies,
+         last_level_id,
+         last_level_number,
+         last_level_updated_at,
+         created_at,
+         updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        profileId,
+        gameId,
+        serializeJson(payload.authCookies || null),
+        payload.lastLevelId || null,
+        payload.lastLevelNumber || null,
+        payload.lastLevelUpdatedAt || null,
+        timestamp,
+        timestamp
+      ]
+    );
+
+    const idRow = get('SELECT last_insert_rowid() AS id');
+    return idRow.id;
+  }
+
+  _buildSessionEntity({ id, profileId, gameId, payload, createdAt, updatedAt }) {
+    return {
+      id,
+      profileId,
+      gameId,
+      createdAt,
+      updatedAt,
+      authCookies: payload.authCookies || null,
+      lastLevelId: payload.lastLevelId || null,
+      lastLevelNumber: payload.lastLevelNumber || null,
+      lastLevelUpdatedAt: payload.lastLevelUpdatedAt || null
+    };
+  }
+
   async upsertGameSession(profileId, payload) {
     const now = Date.now();
     const gameId = String(payload.gameId);
 
     return this.database.runInTransaction(async ({ run, get }) => {
-      const existing = get(
-        `SELECT id, created_at
-         FROM game_sessions
-         WHERE profile_id = ? AND game_id = ?`,
-        [profileId, gameId]
-      );
+      const existing = this._selectGameSession(get, profileId, gameId);
 
       if (existing) {
-        run(
-          `UPDATE game_sessions
-             SET auth_cookies = ?,
-                 last_level_id = ?,
-                 last_level_number = ?,
-                 last_level_updated_at = ?,
-                 updated_at = ?
-           WHERE id = ?`,
-          [
-            serializeJson(payload.authCookies || null),
-            payload.lastLevelId || null,
-            payload.lastLevelNumber || null,
-            payload.lastLevelUpdatedAt || null,
-            now,
-            existing.id
-          ]
-        );
-
-        return {
+        this._updateExistingGameSession(run, existing.id, payload, now);
+        return this._buildSessionEntity({
           id: existing.id,
           profileId,
           gameId,
+          payload,
           createdAt: existing.created_at,
-          updatedAt: now,
-          authCookies: payload.authCookies || null,
-          lastLevelId: payload.lastLevelId || null,
-          lastLevelNumber: payload.lastLevelNumber || null,
-          lastLevelUpdatedAt: payload.lastLevelUpdatedAt || null
-        };
+          updatedAt: now
+        });
       }
 
-      run(
-        `INSERT INTO game_sessions (
-           profile_id,
-           game_id,
-           auth_cookies,
-           last_level_id,
-           last_level_number,
-           last_level_updated_at,
-           created_at,
-           updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          profileId,
-          gameId,
-          serializeJson(payload.authCookies || null),
-          payload.lastLevelId || null,
-          payload.lastLevelNumber || null,
-          payload.lastLevelUpdatedAt || null,
-          now,
-          now
-        ]
-      );
-
-      const idRow = get('SELECT last_insert_rowid() AS id');
-
-      return {
-        id: idRow.id,
+      const newId = this._insertGameSession(run, get, profileId, gameId, payload, now);
+      return this._buildSessionEntity({
+        id: newId,
         profileId,
         gameId,
+        payload,
         createdAt: now,
-        updatedAt: now,
-        authCookies: payload.authCookies || null,
-        lastLevelId: payload.lastLevelId || null,
-        lastLevelNumber: payload.lastLevelNumber || null,
-        lastLevelUpdatedAt: payload.lastLevelUpdatedAt || null
-      };
+        updatedAt: now
+      });
     });
   }
 
