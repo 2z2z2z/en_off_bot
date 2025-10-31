@@ -3,11 +3,16 @@ const { logger } = require('../../infra/logger');
 const {
   userData,
   loadUserData,
-  saveUserData
+  saveUserData,
+  setUserRepository
 } = require('../../core/user-store');
 const { loadAdminConfig } = require('../../services/admin-config');
 const { TelegramAdapter } = require('../../platforms/telegram/telegram-adapter');
 const { VkAdapter } = require('../../platforms/vk');
+const { initializeSqlite } = require('../../infra/database/sqlite');
+const { UserRepository } = require('../../entities/user/repository');
+const { createRuntimeMaintenance } = require('../../processes/maintenance/runtime-maintenance');
+const { createMetricsReporter } = require('../../processes/maintenance/metrics-reporter');
 
 const CLEANUP_LOG_PREFIX = '[bootstrap]';
 
@@ -88,6 +93,11 @@ async function bootstrap() {
   const config = resolveConfig();
 
   await loadAdminConfig();
+
+  const sqlite = await initializeSqlite({ log: logger });
+  const userRepository = new UserRepository({ database: sqlite, logger });
+  setUserRepository(userRepository);
+
   await loadUserData();
 
   const cleaned = cleanupStaleVkBuffers();
@@ -107,6 +117,33 @@ async function bootstrap() {
       shutdownHandlers.push(handler);
     }
   };
+
+  const maintenanceIntervalEnv = Number(process.env.RUNTIME_MAINTENANCE_INTERVAL_HOURS);
+  const runtimeTtlEnv = Number(process.env.RUNTIME_STATE_TTL_HOURS);
+  const inactiveDaysEnv = Number(process.env.RUNTIME_STATE_INACTIVE_DAYS);
+
+  const maintenance = createRuntimeMaintenance({
+    userRepository,
+    logger,
+    intervalHours:
+      Number.isFinite(maintenanceIntervalEnv) && maintenanceIntervalEnv > 0
+        ? maintenanceIntervalEnv
+        : 6,
+    timestampTtlMs:
+      (Number.isFinite(runtimeTtlEnv) && runtimeTtlEnv > 0 ? runtimeTtlEnv : 24) * 60 * 60 * 1000,
+    inactiveDays:
+      Number.isFinite(inactiveDaysEnv) && inactiveDaysEnv > 0 ? inactiveDaysEnv : 30
+  });
+  maintenance.start();
+
+  const metricsIntervalEnv = Number(process.env.METRICS_INTERVAL_MINUTES);
+  const metricsReporter = createMetricsReporter({
+    userData,
+    logger,
+    intervalMinutes:
+      Number.isFinite(metricsIntervalEnv) && metricsIntervalEnv > 0 ? metricsIntervalEnv : 5
+  });
+  metricsReporter.start();
 
   const runShutdown = async signal => {
     logger.info(`\n🛑 Получен сигнал ${signal}, останавливаю бота...`);
@@ -132,10 +169,21 @@ async function bootstrap() {
   });
 
   registerShutdown(async () => {
-    await saveUserData();
+    maintenance.stop();
+    metricsReporter.stop();
+    try {
+      await saveUserData();
+    } catch (error) {
+      logger.error('Ошибка сохранения user_data при завершении:', error);
+    }
     await telegramAdapter.stop().catch(() => {});
     if (vkAdapter) {
       await vkAdapter.stop().catch(() => {});
+    }
+    try {
+      await sqlite.close();
+    } catch (error) {
+      logger.error('Ошибка закрытия SQLite при завершении:', error);
     }
   });
 

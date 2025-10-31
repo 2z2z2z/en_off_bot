@@ -1,68 +1,87 @@
-const {
-  saveUserData,
-  getUserInfo,
-  getAnswerQueue,
-  enqueueAnswer
-} = require('../core/user-store');
-const EncounterAPI = require('../../encounter-api');
-const { logger } = require('../infra/logger');
-const { createAnswerService } = require('../core/answer-service');
-const { bootstrap } = require('./bootstrap');
-const { createBotEngine } = require('./providers/bot-engine');
-const {
-  setPlatformConfig,
-  setAnswerServiceApi,
-  registerTelegramHandlers,
-  handleCommand,
-  handleCallback,
-  handleTextMessage,
-  sendOrUpdateMessage
-} = require('../features/router');
-const { sendMessage: sendPlatformMessage } = require('../core/messenger');
+let initialized = false;
+let bootstrapPromise = null;
 
-let TELEGRAM_PLATFORM = 'telegram';
-let VK_PLATFORM = 'vk';
-let ROOT_USER_ID = 197924096;
+async function ensureAppInitialized() {
+  if (initialized) {
+    return bootstrapPromise;
+  }
 
-async function main() {
-  const { config, adapters } = await bootstrap();
+  initialized = true;
 
-  TELEGRAM_PLATFORM = adapters.telegram?.name || TELEGRAM_PLATFORM;
-  VK_PLATFORM = adapters.vk?.name || VK_PLATFORM;
-  ROOT_USER_ID = config.rootUserId || ROOT_USER_ID;
+  bootstrapPromise = (async () => {
+    const {
+      saveUserData,
+      getUserInfo,
+      getAnswerQueue,
+      enqueueAnswer,
+      refreshConfig
+    } = require('../core/user-store');
+    const EncounterAPI = require('../../encounter-api');
+    const { logger } = require('../infra/logger');
+    const { createAnswerService } = require('../core/answer-service');
+    const { bootstrap } = require('./bootstrap');
+    const { createBotEngine } = require('./providers/bot-engine');
+    const {
+      setPlatformConfig,
+      setAnswerServiceApi,
+      registerTelegramHandlers,
+      handleCommand,
+      handleCallback,
+      handleTextMessage,
+      sendOrUpdateMessage
+    } = require('../features/router');
+    const { sendMessage: sendPlatformMessage } = require('../core/messenger');
 
-  setPlatformConfig({
-    telegram: TELEGRAM_PLATFORM,
-    vk: VK_PLATFORM,
-    rootUserId: ROOT_USER_ID
-  });
+    let TELEGRAM_PLATFORM = 'telegram';
+    let VK_PLATFORM = 'vk';
+    let ROOT_USER_ID = 197924096;
 
-  const botEngine = createBotEngine({
-    adapters,
-    logger,
-    platforms: { telegram: TELEGRAM_PLATFORM, vk: VK_PLATFORM }
-  });
+    refreshConfig();
+    const { config, adapters } = await bootstrap();
 
-  await botEngine.start({
-    registerTelegramHandlers,
-    handleCommand,
-    handleCallback,
-    handleTextMessage
-  });
+    TELEGRAM_PLATFORM = adapters.telegram?.name || TELEGRAM_PLATFORM;
+    VK_PLATFORM = adapters.vk?.name || VK_PLATFORM;
+    ROOT_USER_ID = config.rootUserId || ROOT_USER_ID;
 
-  const answerServiceApi = createAnswerService({
-    EncounterAPI,
-    sendMessage: sendPlatformMessage,
-    sendOrUpdateMessage,
-    saveUserData,
-    getUserInfo,
-    getAnswerQueue,
-    enqueueAnswer
-  });
+    setPlatformConfig({
+      telegram: TELEGRAM_PLATFORM,
+      vk: VK_PLATFORM,
+      rootUserId: ROOT_USER_ID
+    });
 
-  setAnswerServiceApi(answerServiceApi);
+    const botEngine = createBotEngine({
+      adapters,
+      logger,
+      platforms: { telegram: TELEGRAM_PLATFORM, vk: VK_PLATFORM }
+    });
 
-  logger.info('📱 Готов к приему сообщений...');
+    await botEngine.start({
+      registerTelegramHandlers,
+      handleCommand,
+      handleCallback,
+      handleTextMessage
+    });
+
+    const answerServiceApi = createAnswerService({
+      EncounterAPI,
+      sendMessage: sendPlatformMessage,
+      sendOrUpdateMessage,
+      saveUserData,
+      getUserInfo,
+      getAnswerQueue,
+      enqueueAnswer
+    });
+
+    setAnswerServiceApi(answerServiceApi);
+
+    logger.info('📱 Готов к приему сообщений...');
+  })();
+
+  return bootstrapPromise;
 }
 
-module.exports = { main };
+async function main() {
+  await ensureAppInitialized();
+}
+
+module.exports = { main, ensureAppInitialized };

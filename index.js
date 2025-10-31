@@ -1,4 +1,5 @@
 const { logger } = require('./src/infra/logger');
+require('dotenv').config();
 const { main } = require('./src/app');
 
 main().catch(error => {

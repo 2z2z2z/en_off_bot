@@ -8,7 +8,11 @@
 ├── encounter-api.js           # Клиент Encounter, будет декомпозирован в Фазе 4
 ├── src
 │   ├── infra                  # Инфраструктура и адаптеры систем
-│   │   └── logger.js          # Конфигурация pino и обёртка уровней
+│   │   ├── logger.js          # Конфигурация pino и обёртка уровней
+│   │   └── database
+│   │       ├── sqlite.js      # Инициализация SQLite и миграции
+│   │       └── migrations
+│   │           └── 001_init.sql
 │   ├── core                   # Доменные сервисы и бизнес-логика
 │   │   ├── answer-service.js  # Композиция доменных модулей (delivery, queue)
 │   │   ├── auth-manager.js    # Централизация авторизации Encounter
@@ -20,6 +24,15 @@
 │   │   │   ├── burst-detector.js
 │   │   │   └── contracts.js
 │   │   └── router.js
+│   ├── processes              # Долгоживущие процессы и обслуживания
+│   │   └── maintenance
+│   │       ├── runtime-maintenance.js
+│   │       └── metrics-reporter.js
+│   ├── entities               # Доменные сущности и репозитории
+│   │   └── user
+│   │       └── repository
+│   │           ├── index.js
+│   │           └── user-repository.js
 │   ├── platforms              # Платформенные адаптеры (Telegram, VK)
 │   │   ├── telegram
 │   │   │   └── telegram-adapter.js
@@ -41,13 +54,21 @@
 
 - **infra/**
   - `logger.js` — единый pino-логгер (реализовано).
+  - `database/sqlite.js` — инициализация SQLite, применение миграций, утилиты транзакций (Фаза 3).
+  - `database/migrations` — SQL-файлы версионирования схемы.
   - `config/` — загрузка конфигов и переменных окружения (Фаза 1).
-  - `storage/` — драйверы БД после миграции на SQLite (Фаза 3).
 
 - **core/**
   - `bootstrap/` — запуск и DI контейнер (Фаза 1).
   - `answer-service/` — декомпозированные модули (`answer-delivery`, `queue-processor`, `burst-detector`, `batch-buffer`) в Фазе 2.
   - `services/` — whitelist, runtime-state, уведомления (Фазы 2-3).
+
+- **processes/**
+  - `maintenance/runtime-maintenance.js` — периодическая очистка очередей и буферов.
+  - `maintenance/metrics-reporter.js` — логирование метрик (количество пользователей, очередей, накоплений).
+
+- **entities/**
+  - `user/repository/` — реализация `UserRepository`, переход от JSON к SQLite (Фаза 3).
 
 - **platforms/**
   - Текущие адаптеры Telegram/VK остаются.
