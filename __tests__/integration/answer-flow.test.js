@@ -66,12 +66,12 @@ describe('Answer flow integration', () => {
     expect(callArgs[3]).toBe(user.login);
     expect(callArgs[4]).toBe(user.password);
     expect(callArgs[6]).toBe(expectedLevelId);
-    expect(mocks.sendOrUpdateMessage).toHaveBeenCalledWith(
-      'telegram',
-      'user-1',
-      expect.stringContaining('Ответ "CODE-55" отправлен'),
-      'progress-1'
-    );
+    const lastSendCall =
+      mocks.sendOrUpdateMessage.mock.calls[mocks.sendOrUpdateMessage.mock.calls.length - 1];
+    expect(lastSendCall[0]).toBe('telegram');
+    expect(lastSendCall[1]).toBe('user-1');
+    expect(lastSendCall[2]).toContain('Ответ "CODE-55" отправлен');
+    expect(lastSendCall[3]).toBe('progress-1');
     expect(mocks.saveUserData).toHaveBeenCalled();
     expect(user.lastKnownLevel).toEqual({
       levelId: 42,
@@ -119,11 +119,11 @@ describe('Answer flow integration', () => {
       'user-1',
       expect.stringContaining('Подготовка к обработке очереди')
     );
-    expect(mocks.sendOrUpdateMessage).toHaveBeenCalledWith(
-      'telegram',
-      'user-1',
-      expect.stringContaining('Обработка очереди завершена'),
-      'msg-1'
-    );
+    const finalQueueCall =
+      mocks.sendOrUpdateMessage.mock.calls[mocks.sendOrUpdateMessage.mock.calls.length - 1];
+    expect(finalQueueCall[0]).toBe('telegram');
+    expect(finalQueueCall[1]).toBe('user-1');
+    expect(finalQueueCall[2]).toContain('Обработка очереди завершена');
+    expect(finalQueueCall[3]).toBe('msg-1');
   });
 });

@@ -75,12 +75,11 @@ describe('answer-service', () => {
 
     expect(queueRef).toHaveLength(0);
     expect(user.isProcessingQueue).toBe(false);
-    expect(mocks.sendOrUpdateMessage).toHaveBeenCalledWith(
-      'telegram',
-      'user-1',
-      expect.stringContaining('Обработка очереди завершена'),
-      'msg-1'
-    );
+    const finalCall = mocks.sendOrUpdateMessage.mock.calls.at(-1);
+    expect(finalCall[0]).toBe('telegram');
+    expect(finalCall[1]).toBe('user-1');
+    expect(finalCall[2]).toContain('Обработка очереди завершена');
+    expect(finalCall[3]).toBe('msg-1');
   });
 
   test('processAnswerQueue оставляет ответы при повторяющихся ошибках и накапливает счётчики', async () => {
@@ -99,12 +98,11 @@ describe('answer-service', () => {
     expect(queueRef).toHaveLength(1);
     expect(queueRef[0].failedAttempts).toBe(1);
     expect(queueRef[0].lastError).toBe('Временная ошибка');
-    expect(mocks.sendOrUpdateMessage).toHaveBeenCalledWith(
-      'telegram',
-      'user-1',
-      expect.stringContaining('Обработка очереди завершена с ошибками'),
-      'msg-1'
-    );
+    const finalCall = mocks.sendOrUpdateMessage.mock.calls.at(-1);
+    expect(finalCall[0]).toBe('telegram');
+    expect(finalCall[1]).toBe('user-1');
+    expect(finalCall[2]).toContain('Обработка очереди завершена с ошибками');
+    expect(finalCall[3]).toBe('msg-1');
     expect(user.isProcessingQueue).toBe(false);
   });
 
@@ -160,7 +158,56 @@ describe('answer-service', () => {
       'telegram',
       'user-1',
       expect.stringContaining('Ответ "CODE-42" отправлен'),
-      'progress-1'
+      'progress-1',
+      undefined
     );
+  });
+
+  test('sendAnswerToEncounter добавляет код в очередь при сетевой ошибке', async () => {
+    const networkError = new Error('network timeout');
+    const { service, user, mocks } = createAnswerServiceHarness({
+      handlerOverrides: {
+        sendAnswer: async () => {
+          throw networkError;
+        }
+      }
+    });
+    user.lastKnownLevel = { levelId: 77, levelNumber: 9 };
+
+    await service.sendAnswerToEncounter('telegram', 'user-1', 'CODE-NET', 'progress-1');
+
+    expect(mocks.enqueueAnswer).toHaveBeenCalledWith(
+      'telegram',
+      'user-1',
+      expect.objectContaining({
+        answer: 'CODE-NET',
+        levelNumber: 9
+      })
+    );
+    expect(user.isOnline).toBe(false);
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      'telegram',
+      'user-1',
+      expect.stringContaining('Нет соединения. Ответ "CODE-NET" добавлен в очередь')
+    );
+  });
+
+  test('sendAnswerToEncounter уведомляет о блокировке при критической ошибке', async () => {
+    const criticalError = new Error('IP заблокирован');
+    const { service, mocks } = createAnswerServiceHarness({
+      handlerOverrides: {
+        sendAnswer: async () => {
+          throw criticalError;
+        }
+      }
+    });
+
+    await service.sendAnswerToEncounter('telegram', 'user-1', 'CODE-CRIT', 'progress-42');
+
+    const lastCall = mocks.sendOrUpdateMessage.mock.calls.at(-1);
+    expect(lastCall[0]).toBe('telegram');
+    expect(lastCall[1]).toBe('user-1');
+    expect(lastCall[2]).toContain('Бот временно заблокирован');
+    expect(lastCall[3]).toBe('progress-42');
   });
 });

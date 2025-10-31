@@ -8,7 +8,7 @@
     "dev": "node index.js",
     "test": "jest",
     "lint": "eslint .",
-    "format": "prettier --check \"src/infra/**/*.js\" \"src/core/burst-detector.js\" \"src/utils/parse-game-url.js\" \"__tests__/**/*.js\" \"docs/target-structure.md\"",
+    "format": "prettier --check \"src/infra/**/*.js\" \"src/features/answer/burst-detector.js\" \"src/utils/parse-game-url.js\" \"__tests__/**/*.js\" \"docs/target-structure.md\"",
     "format:all": "prettier --write \"**/*.{js,json,md}\""
   },
   "keywords": [

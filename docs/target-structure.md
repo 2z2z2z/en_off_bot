@@ -10,10 +10,16 @@
 │   ├── infra                  # Инфраструктура и адаптеры систем
 │   │   └── logger.js          # Конфигурация pino и обёртка уровней
 │   ├── core                   # Доменные сервисы и бизнес-логика
-│   │   ├── answer-service.js  # Управление отправкой ответов, очередями и буфером
+│   │   ├── answer-service.js  # Композиция доменных модулей (delivery, queue)
 │   │   ├── auth-manager.js    # Централизация авторизации Encounter
-│   │   ├── burst-detector.js  # Условия накопления пачек ответов
 │   │   └── user-store.js      # Работа с пользовательскими данными (до миграции на SQLite)
+│   ├── features
+│   │   ├── answer
+│   │   │   ├── answer-delivery.js
+│   │   │   ├── batch-buffer.js
+│   │   │   ├── burst-detector.js
+│   │   │   └── contracts.js
+│   │   └── router.js
 │   ├── platforms              # Платформенные адаптеры (Telegram, VK)
 │   │   ├── telegram
 │   │   │   └── telegram-adapter.js

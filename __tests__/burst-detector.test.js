@@ -4,7 +4,7 @@ const {
   MESSAGE_INTERVAL_MAX,
   getAccumulationSlice,
   shouldTriggerBurst
-} = require('../src/core/burst-detector');
+} = require('../src/features/answer/burst-detector');
 
 describe('burst-detector', () => {
   const baseTimestamp = 1_000_000;

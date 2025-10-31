@@ -14,7 +14,7 @@ function getAccumulationSlice(pending) {
     return null;
   }
 
-  for (let i = 1; i < slice.length; i++) {
+  for (let i = 1; i < slice.length; i += 1) {
     if (slice[i].timestamp - slice[i - 1].timestamp > MESSAGE_INTERVAL_MAX) {
       return null;
     }

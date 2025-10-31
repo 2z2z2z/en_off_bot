@@ -1,11 +1,8 @@
 const EncounterAPI = require('../../encounter-api');
 const { logger } = require('../infra/logger');
 const { parseGameUrl } = require('../utils/parse-game-url');
-const {
-  BURST_WINDOW,
-  MESSAGE_INTERVAL_MAX,
-  getAccumulationSlice
-} = require('../core/burst-detector');
+const { BURST_WINDOW } = require('./answer/burst-detector');
+const { createBatchBuffer } = require('./answer/batch-buffer');
 const {
   userData,
   saveUserData,
@@ -81,6 +78,14 @@ const deleteMessage = (platform, userId, messageId) =>
 const answerCallback = (platform, data = {}) => answerPlatformCallback(platform, data);
 const adminConfig = getAdminConfig();
 const whitelistCache = getWhitelistCache();
+
+const batchBuffer = createBatchBuffer({
+  getPlatformUser,
+  getSendAnswerToEncounter: () => sendAnswerToEncounter,
+  logger
+});
+
+const { queueAnswerForProcessing, resetBurstState } = batchBuffer;
 
 const editTelegramMessage = (arg1, arg2, arg3, arg4) => {
   if (typeof arg3 === 'undefined' && typeof arg2 === 'object') {
@@ -348,14 +353,7 @@ function resetUserRuntimeState(user) {
     user.accumulationTimer = null;
   }
 
-  clearBurstTimer(user);
-  if (Array.isArray(user.pendingBurstAnswers)) {
-    user.pendingBurstAnswers.length = 0;
-  } else {
-    user.pendingBurstAnswers = [];
-  }
-  user._burstProcessing = false;
-  user._burstProcessingRequested = false;
+  resetBurstState(user);
 
   user.recentMessageTimestamps = [];
   user.isOnline = true;
@@ -820,8 +818,7 @@ async function handleCallback(context) {
           clearTimeout(user.accumulationTimer);
           user.accumulationTimer = null;
         }
-        clearBurstTimer(user);
-        user.pendingBurstAnswers = [];
+        resetBurstState(user);
         await saveUserData();
 
         if (queryId) {
@@ -1554,147 +1551,6 @@ async function handleGameUrlInput(platform, userId, user, text) {
 
   const keyboardOptions = createMainKeyboard(platform);
   await sendMessage(platform, userId, message, keyboardOptions);
-}
-
-function ensureBurstBuffer(user) {
-  if (!Array.isArray(user.pendingBurstAnswers)) {
-    user.pendingBurstAnswers = [];
-  }
-}
-
-function clearBurstTimer(user) {
-  if (user.pendingBurstTimer) {
-    clearTimeout(user.pendingBurstTimer);
-    user.pendingBurstTimer = null;
-  }
-}
-
-function scheduleBurstTimer(platform, userId, user, delay) {
-  clearBurstTimer(user);
-  const timeout = Math.max(delay, 0);
-  user.pendingBurstTimer = setTimeout(() => {
-    user.pendingBurstTimer = null;
-    triggerBurstProcessing(platform, userId).catch(error => {
-      logger.error('[burst] Ошибка повторной обработки:', error);
-    });
-  }, timeout);
-}
-
-async function processPendingEntry(platform, userId, entry) {
-  if (!entry) {
-    return;
-  }
-
-  try {
-    const result = await sendAnswerToEncounter(
-      platform,
-      userId,
-      entry.answer,
-      entry.progressMessageId
-    );
-    if (entry.resolve) {
-      entry.resolve(result);
-    }
-  } catch (error) {
-    logger.error('[burst] Ошибка обработки ответа из буфера:', error);
-    if (entry.resolve) {
-      entry.resolve(null);
-    }
-  }
-}
-
-async function drainAllPending(platform, userId, user) {
-  clearBurstTimer(user);
-  while (user.pendingBurstAnswers && user.pendingBurstAnswers.length > 0) {
-    const entry = user.pendingBurstAnswers.shift();
-    await processPendingEntry(platform, userId, entry);
-  }
-}
-
-async function triggerBurstProcessing(platform, userId) {
-  const user = getPlatformUser(platform, userId);
-  if (!user) {
-    return;
-  }
-
-  ensureBurstBuffer(user);
-
-  if (user._burstProcessing) {
-    user._burstProcessingRequested = true;
-    return;
-  }
-
-  user._burstProcessing = true;
-
-  try {
-    while (user.pendingBurstAnswers && user.pendingBurstAnswers.length > 0) {
-      if (user.isAccumulatingAnswers) {
-        await drainAllPending(platform, userId, user);
-        continue;
-      }
-
-      const accumulationSlice = getAccumulationSlice(user.pendingBurstAnswers);
-      if (accumulationSlice) {
-        const spanMs =
-          accumulationSlice[accumulationSlice.length - 1].timestamp -
-          accumulationSlice[0].timestamp;
-        logger.info(
-          `🔍 Детект оффлайн-пачки: ${accumulationSlice.length} сообщений за ${(spanMs / 1000).toFixed(2)}с`
-        );
-
-        user.isAccumulatingAnswers = true;
-        user.accumulatedAnswers = user.accumulatedAnswers || [];
-        user.accumulationStartLevel = user.accumulationStartLevel || user.lastKnownLevel || null;
-        logger.info(
-          `📦 Режим накопления активирован (уровень: ${user.accumulationStartLevel?.levelNumber || '?'})`
-        );
-
-        await drainAllPending(platform, userId, user);
-        continue;
-      }
-
-      const oldest = user.pendingBurstAnswers[0];
-      const now = Date.now();
-      const elapsed = now - oldest.timestamp;
-
-      if (elapsed >= MESSAGE_INTERVAL_MAX) {
-        const entry = user.pendingBurstAnswers.shift();
-        await processPendingEntry(platform, userId, entry);
-        continue;
-      }
-
-      scheduleBurstTimer(platform, userId, user, MESSAGE_INTERVAL_MAX - elapsed);
-      break;
-    }
-    if (!user.pendingBurstAnswers || user.pendingBurstAnswers.length === 0) {
-      clearBurstTimer(user);
-    }
-  } finally {
-    user._burstProcessing = false;
-    if (user._burstProcessingRequested) {
-      user._burstProcessingRequested = false;
-      await triggerBurstProcessing(platform, userId);
-    }
-  }
-}
-
-async function queueAnswerForProcessing(platform, userId, user, answer, progressMessageId) {
-  ensureBurstBuffer(user);
-  const timestamp = Date.now();
-
-  return new Promise(resolve => {
-    user.pendingBurstAnswers.push({
-      answer,
-      timestamp,
-      progressMessageId,
-      resolve
-    });
-
-    triggerBurstProcessing(platform, userId).catch(error => {
-      logger.error('[burst] Ошибка запуска обработки:', error);
-      resolve(null);
-    });
-  });
 }
 
 module.exports = {
