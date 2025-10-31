@@ -1,3 +1,5 @@
+const { LevelChangedError } = require('../../core/encounter-errors');
+
 const PLURAL_FORMS = ['ответ', 'ответа', 'ответов'];
 
 function formatAnswersCount(count) {
@@ -69,18 +71,23 @@ async function detectLevelChange({
   sendOrUpdateMessage,
   logger
 }) {
-  if (!error?.isLevelChanged) {
+  const isLevelChange = error instanceof LevelChangedError || error?.isLevelChanged;
+
+  if (!isLevelChange) {
     return false;
   }
 
+  const oldLevel = error?.oldLevel ?? '?';
+  const newLevel = error?.newLevel ?? '?';
+
   logger?.info(
-    `⚠️ ЗАЩИТА СРАБОТАЛА: Уровень изменился (${error.oldLevel} → ${error.newLevel}) для ответа "${answer}"`
+    `⚠️ ЗАЩИТА СРАБОТАЛА: Уровень изменился (${oldLevel} → ${newLevel}) для ответа "${answer}"`
   );
 
   user.pendingAnswerDecision = {
     answer,
-    oldLevel: error.oldLevel,
-    newLevel: error.newLevel
+    oldLevel,
+    newLevel
   };
   await saveUserData();
 
@@ -91,7 +98,7 @@ async function detectLevelChange({
       reply_markup: {
         inline_keyboard: [
           [
-            { text: `Отправить в уровень ${error.newLevel}`, callback_data: 'answer_send' },
+            { text: `Отправить в уровень ${newLevel}`, callback_data: 'answer_send' },
             { text: 'Отменить', callback_data: 'answer_cancel' }
           ]
         ]
@@ -103,7 +110,7 @@ async function detectLevelChange({
         type: 'inline',
         buttons: [
           [
-            { label: `Отправить в уровень ${error.newLevel}`, payload: { action: 'answer_send' } },
+            { label: `Отправить в уровень ${newLevel}`, payload: { action: 'answer_send' } },
             { label: 'Отменить', payload: { action: 'answer_cancel' } }
           ]
         ]
@@ -112,9 +119,9 @@ async function detectLevelChange({
   }
 
   const messageText =
-    `⚠️ Уровень изменился (${error.oldLevel} → ${error.newLevel})\n\n` +
-    `Ответ "${answer}" готовился для уровня ${error.oldLevel}, ` +
-    `но текущий уровень — ${error.newLevel}.\n\n` +
+    `⚠️ Уровень изменился (${oldLevel} → ${newLevel})\n\n` +
+    `Ответ "${answer}" готовился для уровня ${oldLevel}, ` +
+    `но текущий уровень — ${newLevel}.\n\n` +
     `Что делать?`;
 
   await updateProgressMessage({

@@ -8,6 +8,12 @@ const {
   handleCookieUpdate,
   updateLastKnownLevel
 } = require('./answer-helpers');
+const {
+  AuthRequiredError,
+  NetworkError,
+  LevelChangedError,
+  EncounterError
+} = require('../../core/encounter-errors');
 
 const ACCUMULATION_TIMEOUT_MS = 5000;
 const MAX_RETRIES = 2;
@@ -54,21 +60,48 @@ function createAccumulationNotice(answer, count) {
 }
 
 function classifyError(error) {
-  const normalizedMessage = error.message?.toLowerCase?.() || '';
-
-  const networkErrors = ['econnrefused', 'enotfound', 'etimedout', 'network', 'timeout'];
-  const authErrors = ['требуется повторная авторизация', 'сессия истекла'];
-  const criticalErrors = ['ip заблокирован', 'слишком много запросов'];
-
-  if (criticalErrors.some(pattern => normalizedMessage.includes(pattern))) {
-    return 'critical';
+  if (error instanceof LevelChangedError) {
+    return 'level-change';
   }
 
-  if (networkErrors.some(pattern => normalizedMessage.includes(pattern))) {
+  if (error instanceof AuthRequiredError) {
+    return 'auth';
+  }
+
+  if (error instanceof NetworkError) {
+    if (error.code === 'IP_BLOCKED') {
+      return 'critical';
+    }
     return 'network';
   }
 
-  if (authErrors.some(pattern => normalizedMessage.includes(pattern))) {
+  if (error instanceof EncounterError && error.code === 'IP_BLOCKED') {
+    return 'critical';
+  }
+
+  const normalizedMessage = error.message?.toLowerCase?.() || '';
+
+  if (
+    normalizedMessage.includes('ip заблокирован') ||
+    normalizedMessage.includes('слишком много запросов')
+  ) {
+    return 'critical';
+  }
+
+  if (
+    normalizedMessage.includes('econnrefused') ||
+    normalizedMessage.includes('enotfound') ||
+    normalizedMessage.includes('etimedout') ||
+    normalizedMessage.includes('network') ||
+    normalizedMessage.includes('timeout')
+  ) {
+    return 'network';
+  }
+
+  if (
+    normalizedMessage.includes('повторная авторизация') ||
+    normalizedMessage.includes('сессия истекла')
+  ) {
     return 'auth';
   }
 

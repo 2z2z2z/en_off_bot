@@ -102,21 +102,29 @@
     - [x] Документировать процедуру возврата к JSON
     - [x] Сохранять бэкапы SQLite после каждой критической операции
 
-- [ ] **Фаза 4: Улучшение Encounter API** (см. [раздел 3.4](refactoring.md#34-перестройка-encounter-api))
+- [x] **Фаза 4: Улучшение Encounter API** (см. [раздел 3.4](refactoring.md#34-перестройка-encounter-api))
 
   **Текущее состояние:** Rate limiter, кеш уровней, authCallback с мьютексом уже реализованы хорошо.
-  - [ ] **Кастомные классы ошибок:**
-    - [ ] Создать `src/core/encounter-errors.js` с иерархией:
-      - `EncounterError` (базовый)
-      - `LevelChangedError` (смена уровня)
-      - `AuthRequiredError` (требуется реавторизация)
-      - `NetworkError` (сетевые проблемы)
-    - [ ] Заменить текстовые сравнения ошибок на instanceof проверки
-    - [ ] Обновить answer-service для работы с новыми классами ошибок
+    - [x] **Кастомные классы ошибок:**
+      - [x] Создать `src/core/encounter-errors.js` с иерархией:
+        - `EncounterError` (базовый)
+        - `LevelChangedError` (смена уровня)
+        - `AuthRequiredError` (требуется реавторизация)
+        - `NetworkError` (сетевые проблемы)
+      - [x] Заменить текстовые сравнения ошибок на instanceof проверки
+      - [x] Обновить answer-service для работы с новыми классами ошибок
+    - [ ] **Нормализация авторизации (`authenticate`):**
+      - [x] Задействовать `_normalizeAuthResponse` и `_normalizeAuthError`, убрать дублирование логики
+      - [x] Сохранять HTML-ответы при блокировке IP через `_saveErrorHtml`
+      - [x] Расширить тесты авторизации (IP_BLOCKED, HTML-ответы) и интегрировать проверку в smoke-набор
 
-  - [ ] **Интеграция структурированного логирования:**
-    - [ ] Заменить console.log/error на pino logger (из фазы 0)
-    - [ ] Добавить контекст запросов (userId, gameId, level) в логи
+    - [x] **Интеграция структурированного логирования:**
+      - [x] Заменить console.log/error на pino logger (из фазы 0)
+      - [x] Добавить контекст запросов (userId, gameId, level) в логи
+    - [x] **Унификация сетевых ошибок Encounter:**
+      - [x] Вынести нормализацию axios-ошибок в `_normalizeNetworkError`
+      - [x] Подключить хелпер к `getGameState` и `sendAnswer`
+      - [x] Использовать хелпер в прочих методах (`getGamesList`, `checkConnection`, `getGameInfo`)
 
 - [ ] **Фаза 5: Presentation-слой** (минимальные правки — см. [раздел 3.5](refactoring.md#35-платформенные-адаптеры-и-событийная-шина))
 

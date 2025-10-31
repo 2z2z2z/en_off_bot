@@ -19,6 +19,7 @@ const {
   deleteMessage: deletePlatformMessage,
   answerCallback: answerPlatformCallback
 } = require('../core/messenger');
+const { LevelChangedError } = require('../core/encounter-errors');
 const { ensureAuthenticated, createAuthCallback } = require('../core/auth-manager');
 const { getAdminConfig, getWhitelistCache, saveAdminConfig } = require('../services/admin-config');
 
@@ -1269,7 +1270,7 @@ async function processBatchSend(platform, userId) {
         logger.error(`❌ Ошибка отправки кода "${item.answer}":`, error.message);
 
         // Если уровень изменился - прерываем
-        if (error.isLevelChanged) {
+        if (error instanceof LevelChangedError || error.isLevelChanged) {
           stopped = true;
 
           user.accumulatedAnswers.splice(0, sent);

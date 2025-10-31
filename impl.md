@@ -86,3 +86,12 @@
 - Добавлен экспорт `scripts/export-sqlite-to-json.js` (`npm run export:json`) для обратного преобразования SQLite → JSON и обновлены инструкции (`docs/deployment.md`, `docs/testing.md`) по бэкапам и rollback. Для финального выключения JSON предусмотрен скрипт `npm run archive:json`, перемещающий `user_data.json` в `backups/`.
 - Создан бенчмарк `scripts/perf-user-repository.js` (`npm run test:perf`), который на временной БД прогоняет 500 профилей, 1000 смешанных операций и конкурентные обновления (50×20). Итоговые показатели: засев ≈1.61 c (310 оп/с), цикл из 1000 операций ≈0.88 c (≈1137 оп/с), конкурентный блок ≈1.30 c. Скрипт удаляет временные артефакты и использует общий логгер.
 - Актуализированы `docs/target-structure.md` и `plan.md` (отмечены выполненные подпункты Фазы 3, добавлено описание новых директорий).
+
+## Фаза 4 — Encounter API (часть 1)
+
+- Добавлен модуль `src/core/encounter-errors.js` с иерархией `EncounterError` → `AuthRequiredError`, `NetworkError`, `LevelChangedError`, `RateLimitError`, отражающих причины и retry-политику.
+  - Начата переработка `encounter-api.js`: метод `authenticate` использует `_normalizeAuthResponse/_normalizeAuthError`, сохраняет HTML-блокировки через `_saveErrorHtml` и возвращает унифицированные коды ошибок вместо ручной обработки. Добавлены Jest-тесты `__tests__/encounter-api-auth.test.js`, проверяющие сценарии IP_BLOCKED и HTML-ошибок.
+  - Добавлен вспомогательный `_log` с маскированием логина и базовым контекстом (domain/gameId). `authenticate`, `getGameState`, `sendAnswer` и сценарии реаутентизации перешли на структурированные логи pino (`info|warn|error`) и теперь пишут идентификаторы уровня, события и retry-флаги.
+  - `_normalizeNetworkError` расширен: общий маппинг HTTP/сетевых кодов применяется во всех публичных методах Encounter API (`getGameState`, `sendAnswer`, `getGameInfo`, `getGamesList`, `checkConnection`), а логи фиксируют payload-сниппеты и retry-политику.
+- Логирование Encounter API улучшено: ошибки теперь пишутся через структурированный логгер с объектами `{ error, gameId }`, сохранение HTML ошибок возвращено к исходной семантике.
+- `answer-delivery` обновлён для работы с типизированными ошибками (`LevelChangedError`, `AuthRequiredError`, `NetworkError`), классификация ошибок вынесена в отдельную функцию и использует instanceof вместо строковых сравнений.
