@@ -339,6 +339,87 @@ function collectHelps(helps, { formatted = false } = {}) {
   return result;
 }
 
+function buildTaskHeader({ isTelegram, levelNumber, levelName }) {
+  const title = `📜 Задание уровня №${levelNumber}${levelName ? ` — ${levelName}` : ''}`;
+  return isTelegram ? `<b>${title}</b>` : title;
+}
+
+function buildTimeoutLine({ isTelegram, timeoutRemain }) {
+  if (!timeoutRemain) {
+    return '';
+  }
+
+  return isTelegram
+    ? `<i>До автоперехода осталось: ${escapeHtml(timeoutRemain)}</i>`
+    : `До автоперехода осталось: ${timeoutRemain}`;
+}
+
+function renderTaskFragment({ formatted, isTelegram }, text) {
+  if (formatted) {
+    return isTelegram ? sanitizeHtmlForTelegram(text) : stripHtml(text);
+  }
+
+  return isTelegram ? escapeHtml(text) : text;
+}
+
+function buildTaskBody(context) {
+  const { taskFragments, formatted, isTelegram } = context;
+
+  if (taskFragments.length === 0) {
+    if (formatted) {
+      return isTelegram ? '<i>Текст задания недоступен.</i>' : 'Текст задания недоступен.';
+    }
+
+    return isTelegram
+      ? '<blockquote>Текст задания недоступен.</blockquote>'
+      : 'Текст задания недоступен.';
+  }
+
+  const rendered = taskFragments.map(fragment => renderTaskFragment(context, fragment));
+
+  if (!formatted && isTelegram) {
+    return rendered.map(fragment => `<blockquote>${fragment}</blockquote>`).join('\n\n');
+  }
+
+  return rendered.join('\n\n');
+}
+
+function buildHelpSection(context, help) {
+  const { formatted, isTelegram } = context;
+  const number = help.number;
+  const label = number ? `💡 Подсказка ${number}` : '💡 Подсказка';
+  const remainStr = formatRemain(help.remainSeconds);
+
+  const helpContent = formatted
+    ? isTelegram
+      ? sanitizeHtmlForTelegram(help.text)
+      : stripHtml(help.text)
+    : isTelegram
+      ? escapeHtml(help.text)
+      : help.text;
+
+  if (isTelegram) {
+    const remainLine = remainStr
+      ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>`
+      : '';
+    if (formatted) {
+      return `<b>${label}</b>\n${helpContent}${remainLine}`;
+    }
+    return `<b>${label}</b>\n<blockquote>${helpContent}</blockquote>${remainLine}`;
+  }
+
+  let section = `${label}\n${helpContent}`;
+  if (remainStr) {
+    section += `\nДо подсказки осталось: ${remainStr}`;
+  }
+  return section;
+}
+
+function buildHelpsBlock(context) {
+  const sections = context.helps.map(help => buildHelpSection(context, help));
+  return sections.length > 0 ? sections.join('\n\n') : '';
+}
+
 function formatTaskMessage({
   platform,
   telegramPlatform = 'telegram',
@@ -355,92 +436,25 @@ function formatTaskMessage({
   const levelNumber = level?.Number ?? '';
   const levelNameRaw = String(level?.Name || '').trim();
   const levelName = isTelegram ? escapeHtml(levelNameRaw) : levelNameRaw;
-  const header = isTelegram
-    ? `<b>📜 Задание уровня №${levelNumber}${levelName ? ` — ${levelName}` : ''}</b>`
-    : `📜 Задание уровня №${levelNumber}${levelName ? ` — ${levelName}` : ''}`;
-
-  const timeoutLine = timeoutRemain
-    ? isTelegram
-      ? `<i>До автоперехода осталось: ${escapeHtml(timeoutRemain)}</i>`
-      : `До автоперехода осталось: ${timeoutRemain}`
-    : '';
-
-  const renderTaskFragment = text => {
-    if (formatted) {
-      if (isTelegram) {
-        return sanitizeHtmlForTelegram(text);
-      }
-      return stripHtml(text);
-    }
-    return isTelegram ? escapeHtml(text) : text;
+  const context = {
+    isTelegram,
+    formatted,
+    taskFragments,
+    helps: normalizedHelps,
+    timeoutRemain,
+    levelNumber,
+    levelName
   };
 
-  let bodyMain;
-  if (taskFragments.length > 0) {
-    if (!formatted && isTelegram) {
-      bodyMain = taskFragments
-        .map(fragment => `<blockquote>${renderTaskFragment(fragment)}</blockquote>`)
-        .join('\n\n');
-    } else {
-      const rendered = taskFragments.map(fragment => renderTaskFragment(fragment));
-      bodyMain = rendered.join('\n\n');
-    }
-  } else {
-    bodyMain = formatted
-      ? isTelegram
-        ? '<i>Текст задания недоступен.</i>'
-        : 'Текст задания недоступен.'
-      : isTelegram
-        ? '<blockquote>Текст задания недоступен.</blockquote>'
-        : 'Текст задания недоступен.';
-  }
-
-  const helpsSections = [];
-  for (const help of normalizedHelps) {
-    const number = help.number;
-    const label = number ? `💡 Подсказка ${number}` : '💡 Подсказка';
-    const remainStr = formatRemain(help.remainSeconds);
-    const helpContent = formatted
-      ? isTelegram
-        ? sanitizeHtmlForTelegram(help.text)
-        : stripHtml(help.text)
-      : isTelegram
-        ? escapeHtml(help.text)
-        : help.text;
-
-    if (isTelegram) {
-      if (formatted) {
-        const remainLine = remainStr
-          ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>`
-          : '';
-        helpsSections.push(`<b>${label}</b>\n${helpContent}${remainLine}`);
-      } else {
-        const remainLine = remainStr
-          ? `\n<i>До подсказки осталось: ${escapeHtml(remainStr)}</i>`
-          : '';
-        helpsSections.push(`<b>${label}</b>\n<blockquote>${helpContent}</blockquote>${remainLine}`);
-      }
-    } else {
-      let section = `${label}\n${helpContent}`;
-      if (remainStr) {
-        section += `\nДо подсказки осталось: ${remainStr}`;
-      }
-      helpsSections.push(section);
-    }
-  }
-
-  const helpsBlock = helpsSections.length > 0 ? helpsSections.join('\n\n') : '';
+  const header = buildTaskHeader(context);
+  const timeoutLine = buildTimeoutLine(context);
+  const bodyMain = buildTaskBody(context);
+  const helpsBlock = buildHelpsBlock(context);
 
   const sections = [header];
-  if (timeoutLine) {
-    sections.push(timeoutLine);
-  }
-  if (bodyMain) {
-    sections.push(bodyMain);
-  }
-  if (helpsBlock) {
-    sections.push(helpsBlock);
-  }
+  if (timeoutLine) sections.push(timeoutLine);
+  if (bodyMain) sections.push(bodyMain);
+  if (helpsBlock) sections.push(helpsBlock);
 
   const text = sections.join('\n\n');
   const body = sections.slice(1).join('\n\n');
@@ -502,4 +516,3 @@ module.exports = {
   extractSectorAnswerText,
   isTelegramPlatform
 };
-

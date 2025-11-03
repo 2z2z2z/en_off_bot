@@ -18,6 +18,19 @@ const { createInlineKeyboard } = require('../../presentation/keyboard-factory');
 
 const ACCUMULATION_TIMEOUT_MS = 5000;
 const MAX_RETRIES = 2;
+const CRITICAL_MESSAGE_PATTERNS = ['ip заблокирован', 'слишком много запросов'];
+const NETWORK_MESSAGE_PATTERNS = ['econnrefused', 'enotfound', 'etimedout', 'network', 'timeout'];
+const AUTH_MESSAGE_PATTERNS = ['повторная авторизация', 'сессия истекла'];
+
+const includesAny = (text, patterns) => patterns.some(pattern => text.includes(pattern));
+
+const normalizeErrorMessage = message => {
+  if (!message) {
+    return '';
+  }
+
+  return String(message).toLowerCase();
+};
 
 function formatQueueDecisionText(decision) {
   const { queueSize, oldLevelNumber, newLevelNumber } = decision;
@@ -70,39 +83,24 @@ function classifyError(error) {
   }
 
   if (error instanceof NetworkError) {
-    if (error.code === 'IP_BLOCKED') {
-      return 'critical';
-    }
-    return 'network';
+    return error.code === 'IP_BLOCKED' ? 'critical' : 'network';
   }
 
   if (error instanceof EncounterError && error.code === 'IP_BLOCKED') {
     return 'critical';
   }
 
-  const normalizedMessage = error.message?.toLowerCase?.() || '';
+  const normalizedMessage = normalizeErrorMessage(error.message);
 
-  if (
-    normalizedMessage.includes('ip заблокирован') ||
-    normalizedMessage.includes('слишком много запросов')
-  ) {
+  if (includesAny(normalizedMessage, CRITICAL_MESSAGE_PATTERNS)) {
     return 'critical';
   }
 
-  if (
-    normalizedMessage.includes('econnrefused') ||
-    normalizedMessage.includes('enotfound') ||
-    normalizedMessage.includes('etimedout') ||
-    normalizedMessage.includes('network') ||
-    normalizedMessage.includes('timeout')
-  ) {
+  if (includesAny(normalizedMessage, NETWORK_MESSAGE_PATTERNS)) {
     return 'network';
   }
 
-  if (
-    normalizedMessage.includes('повторная авторизация') ||
-    normalizedMessage.includes('сессия истекла')
-  ) {
+  if (includesAny(normalizedMessage, AUTH_MESSAGE_PATTERNS)) {
     return 'auth';
   }
 

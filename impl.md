@@ -106,3 +106,11 @@
 - `src/features/router.js` разгружен: вынесены presentation-функции, batch-процесс теперь опирается на `formatBatchProgress/formatStatusText`, а обработчик заданий работает через `formatTaskMessage`. Файл потерял 350+ строк вспомогательного форматирующего кода, упростились блоки `handleSendBuffer` и `handleSendTask`.
 - Админские сценарии (`showUsersList`, `showModerationMenu`, `showWhitelistMenu`) переведены на фабрику клавиатур, что устранило ручное построение `reply_markup` и сокращает риск расхождений при изменениях UI.
 - Обновлены `plan.md` (закрыты чекбоксы фазы 5 и техдолга по router/vk-keyboard) и `impl.md` текущим описанием, чтобы рефлексировать состояние рефакторинга.
+
+## Технический долг — ноябрь 2025
+
+- `handleCallback` разделён на модульные обработчики (`queue/answer/batch/admin`) и унифицированную диспетчеризацию. Добавлен сервис `ready-state-handler`, в котором вынесены сценарии готового состояния, а `processBatchSend` перенесён в `router/services/batch-sender`.
+- `sendLevelTask` и `handleReadyStateInput` удалены из монолитного `router.js`, их логика покрывается новыми сервисами; админские callback'и работают через `createAdminCallbackHandler`.
+- `classifyError` в `answer-delivery` переписан на таблицу условий с нормализацией сообщения и массивами паттернов.
+- `formatTaskMessage` декомпозирован на вспомогательные функции (`buildTaskHeader`, `buildTaskBody`, `buildHelpsBlock`), что снизило когнитивную сложность и упростило повторное использование.
+- Все связанные тесты (`npm test`) и линтер (`npm run lint`) проходят без предупреждений.

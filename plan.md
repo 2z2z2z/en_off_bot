@@ -187,3 +187,9 @@
 - [x] Декомпозировать `encounter-api.js` (повторяющиеся retry и обработка ошибок)
 - [x] Упростить `src/core/user-store.js` (загрузка/сохранение, распределить в репозитории/сервисы)
 - [x] Убрать дублирование клавиатур в `src/platforms/vk/vk-adapter.js` (unused vars, фабрика клавиатур)
+- [x] Декомпозировать `handleCallback` в `src/features/router.js` (разделить обработчики очереди, ответов, батчей, админки на отдельные модули)
+- [x] Упростить `processBatchSend` в `src/features/router.js` (вынести отправку, переавторизацию и формирование отчётов в сервисы)
+- [x] Разбить `handleReadyStateInput` в `src/features/router.js` (отдельные шаги настройки/валидации учетных данных)
+- [x] Вынести загрузку и отправку задания из `sendLevelTask` `src/features/router.js` в специализированные хелперы
+- [x] Снизить сложность `classifyError` в `src/features/answer/answer-delivery.js` (реорганизовать маппинг типов ошибок)
+- [x] Декомпозировать `formatTaskMessage` в `src/presentation/message-formatter.js` (выделить подпроцессы генерации секций)

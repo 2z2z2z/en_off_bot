@@ -17,6 +17,12 @@ const {
   formatStatusText,
   formatRemain
 } = require('../presentation/message-formatter');
+const { createBatchSender } = require('./router/services/batch-sender');
+const { createQueueCallbackHandler } = require('./router/callbacks/queue-handler');
+const { createAnswerCallbackHandler } = require('./router/callbacks/answer-handler');
+const { createBatchCallbackHandler } = require('./router/callbacks/batch-handler');
+const { createAdminCallbackHandler } = require('./router/callbacks/admin-handler');
+const { createReadyStateHandler } = require('./router/services/ready-state-handler');
 const {
   userData,
   saveUserData,
@@ -97,6 +103,121 @@ const batchBuffer = createBatchBuffer({
 });
 
 const { queueAnswerForProcessing, resetBurstState } = batchBuffer;
+const executeBatchSend = createBatchSender({
+  logger,
+  getPlatformUser,
+  createAuthCallback,
+  EncounterAPI,
+  saveUserData,
+  sendMessage,
+  sendOrUpdateMessage,
+  createInlineKeyboard,
+  formatBatchProgress,
+  formatStatusText,
+  LevelChangedError
+});
+const queueCallbackHandler = createQueueCallbackHandler({
+  logger,
+  getPlatformUser,
+  getAnswerQueue,
+  saveUserData,
+  processAnswerQueue: (platform, userId) => processAnswerQueue(platform, userId),
+  sendMessage
+});
+const answerCallbackHandler = createAnswerCallbackHandler({
+  logger,
+  getPlatformUser,
+  saveUserData,
+  createAuthCallback,
+  EncounterAPI,
+  sendMessage
+});
+const batchCallbackHandler = createBatchCallbackHandler({
+  logger,
+  getPlatformUser,
+  saveUserData,
+  processBatchSend: (platform, userId) => processBatchSend(platform, userId),
+  sendMessage,
+  createAuthCallback,
+  EncounterAPI,
+  resetBurstState
+});
+const adminCallbackHandler = createAdminCallbackHandler({
+  logger,
+  getTelegramPlatform: () => TELEGRAM_PLATFORM,
+  getRootUserId: () => ROOT_USER_ID,
+  adminConfig,
+  saveAdminConfig,
+  clearUserState,
+  deleteMessage,
+  showAdminMainMenu,
+  showModerationMenu,
+  showUsersList,
+  showWhitelistMenu,
+  handleWhitelistAdd,
+  handleWhitelistRemove
+});
+const { handleReadyStateInput } = createReadyStateHandler({
+  handleStartCommand,
+  checkGameAccess,
+  sendMessage,
+  sendOrUpdateMessage,
+  editMessage,
+  ensureAuthenticated,
+  createAuthCallback,
+  EncounterAPI,
+  saveUserData,
+  collectTaskFragments,
+  collectHelps,
+  formatRemain,
+  formatTaskMessage,
+  formatSectorsMessage,
+  splitMessageBody,
+  getTelegramPlatform: () => TELEGRAM_PLATFORM,
+  setUserState,
+  getStates: () => STATES,
+  resetUserRuntimeState,
+  queueAnswerForProcessing,
+  processAnswerQueue: (platform, userId) => processAnswerQueue(platform, userId)
+});
+
+const ADMIN_ACTIONS = new Set(['admin_moderation','admin_back','moderation_toggle','whitelist_add']);
+const ADMIN_ACTION_PREFIXES = ['admin_users_','admin_whitelist_','whitelist_remove_'];
+
+const isAdminAction = action =>
+  ADMIN_ACTIONS.has(action) || ADMIN_ACTION_PREFIXES.some(prefix => action.startsWith(prefix));
+
+async function handleAdminAction(data, callbackContext, answerCb) {
+  if (!isAdminAction(data)) {
+    return false;
+  }
+
+  const { platform, chatId, queryId } = callbackContext;
+
+  if (platform !== TELEGRAM_PLATFORM) {
+    return true;
+  }
+
+  if (Number(chatId) !== ROOT_USER_ID) {
+    if (queryId) {
+      await answerCb({
+        queryId,
+        text: '❌ У вас нет доступа',
+        show_alert: true
+      });
+    }
+    return true;
+  }
+
+  if (adminCallbackHandler.matches(data, callbackContext)) {
+    await adminCallbackHandler.handle(data, callbackContext);
+  } else if (queryId) {
+    await answerCb({ queryId });
+  }
+
+  return true;
+}
+
 
 const editTelegramMessage = (arg1, arg2, arg3, arg4) => {
   if (typeof arg3 === 'undefined' && typeof arg2 === 'object') {
@@ -434,10 +555,8 @@ async function handleCallback(context) {
 
   const chatId = meta.chatId ?? userId;
   const messageId = meta.messageId;
-  // Для Telegram используем queryId, для VK - eventId
   const queryId = meta.queryId || meta.eventId;
 
-  // Helper для answerCallback (работает для Telegram и VK)
   const answerCb = async (options = {}) => {
     if (!queryId) return;
     await answerCallback(platform, {
@@ -449,7 +568,6 @@ async function handleCallback(context) {
     });
   };
 
-  // Универсальная обработка payload для Telegram (строка) и VK (объект)
   let data = '';
   if (typeof payload === 'string') {
     data = payload;
@@ -462,79 +580,29 @@ async function handleCallback(context) {
     return;
   }
 
-  // Обработка кнопок выбора очереди (доступно для всех платформ)
-  if (data === 'queue_send' || data === 'queue_clear') {
-    try {
-      const user = getPlatformUser(platform, userId);
-      const queue = getAnswerQueue(platform, userId);
+  const callbackContext = {
+    platform,
+    userId,
+    chatId,
+    messageId,
+    queryId,
+    answerCb
+  };
 
-      if (!user.pendingQueueDecision) {
-        if (queryId) {
-          await answerCb({
-            queryId,
-            text: '⚠️ Нет активного выбора',
-            show_alert: true
-          });
-        }
+  const callbackHandlers = [
+    { handler: queueCallbackHandler, logPrefix: 'Ошибка обработки выбора очереди' },
+    { handler: answerCallbackHandler, logPrefix: 'Ошибка обработки выбора ответа' },
+    { handler: batchCallbackHandler, logPrefix: 'Ошибка обработки накопленных кодов' }
+  ];
+
+  for (const { handler, logPrefix } of callbackHandlers) {
+    try {
+      if (handler.matches(data, callbackContext)) {
+        await handler.handle(data, callbackContext);
         return;
       }
-
-      const decision = user.pendingQueueDecision;
-
-      if (data === 'queue_send') {
-        // Отправить очередь в новый уровень
-        logger.info(`✅ Пользователь выбрал: отправить ${queue.length} ответов в новый уровень`);
-
-        user.pendingQueueDecision = null;
-        await saveUserData();
-
-        if (queryId) {
-          await answerCb({
-            queryId,
-            text: `Отправка ${queue.length} ${queue.length === 1 ? 'ответа' : 'ответов'} в уровень ${decision.newLevelNumber}...`
-          });
-        }
-
-        await sendMessage(
-          platform,
-          userId,
-          `Обработка очереди из ${queue.length} ${queue.length === 1 ? 'ответа' : 'ответов'}...`
-        );
-
-        // Запускаем обработку очереди
-        await processAnswerQueue(platform, userId);
-      } else if (data === 'queue_clear') {
-        // Очистить очередь
-        const clearedAnswers = queue
-          .slice(0, 5)
-          .map(item => `"${item.answer}"`)
-          .join(', ');
-        const moreAnswers = queue.length > 5 ? ` и ещё ${queue.length - 5}` : '';
-
-        logger.info(`🗑️ Пользователь выбрал: очистить ${queue.length} ответов`);
-
-        queue.length = 0;
-        user.pendingQueueDecision = null;
-        await saveUserData();
-
-        if (queryId) {
-          await answerCb({
-            queryId,
-            text: '🗑️ Очередь очищена'
-          });
-        }
-
-        await sendMessage(
-          platform,
-          userId,
-          `🗑️ Очередь очищена (уровень ${decision.oldLevelNumber} → ${decision.newLevelNumber})\n\n` +
-            `Пропущено ${decision.queueSize} ${decision.queueSize === 1 ? 'ответ' : decision.queueSize < 5 ? 'ответа' : 'ответов'}: ${clearedAnswers}${moreAnswers}`
-        );
-      }
-
-      return;
     } catch (error) {
-      logger.error('Ошибка обработки выбора очереди:', error);
+      logger.error(`${logPrefix}:`, error);
       if (queryId) {
         await answerCb({
           queryId,
@@ -546,421 +614,11 @@ async function handleCallback(context) {
     }
   }
 
-  // Обработка кнопок выбора для одиночного ответа (доступно для всех платформ)
-  if (data === 'answer_send' || data === 'answer_cancel') {
-    try {
-      const user = getPlatformUser(platform, userId);
-
-      if (!user.pendingAnswerDecision) {
-        if (queryId) {
-          await answerCb({
-            queryId,
-            text: '⚠️ Нет активного выбора',
-            show_alert: true
-          });
-        }
-        return;
-      }
-
-      const decision = user.pendingAnswerDecision;
-
-      if (data === 'answer_send') {
-        // Отправить ответ в новый уровень
-        logger.info(
-          `Пользователь выбрал: отправить "${decision.answer}" в уровень ${decision.newLevel}`
-        );
-
-        user.pendingAnswerDecision = null;
-        await saveUserData();
-
-        if (queryId) {
-          await answerCb({
-            queryId,
-            text: `Отправка ответа в уровень ${decision.newLevel}...`
-          });
-        }
-
-        // Отправляем ответ напрямую через API с централизованной авторизацией
-        const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
-        const api = new EncounterAPI(user.domain, authCallback);
-
-        try {
-          const result = await api.sendAnswer(
-            user.gameId,
-            decision.answer,
-            user.authCookies,
-            user.login,
-            user.password
-          );
-
-          if (result.success) {
-            let levelInfo = null;
-            if (result.level && result.level.LevelId) {
-              levelInfo = result.level;
-            } else if (result.data?.Level && result.data.Level.LevelId) {
-              levelInfo = result.data.Level;
-            }
-
-            if (!levelInfo) {
-              try {
-                const state = await api.getGameState(
-                  user.gameId,
-                  user.authCookies,
-                  user.login,
-                  user.password
-                );
-                if (state.success && state.data?.Level && state.data.Level.LevelId) {
-                  levelInfo = state.data.Level;
-                }
-              } catch (stateError) {
-                logger.error(
-                  '⚠️ Не удалось обновить lastKnownLevel после подтверждения:',
-                  stateError.message
-                );
-              }
-            }
-
-            if (levelInfo && levelInfo.LevelId) {
-              user.lastKnownLevel = {
-                levelId: levelInfo.LevelId,
-                levelNumber: levelInfo.Number,
-                timestamp: Date.now()
-              };
-              logger.info(
-                `📌 Обновлен lastKnownLevel после подтверждения: уровень ${levelInfo.Number} (ID: ${levelInfo.LevelId})`
-              );
-            }
-
-            await saveUserData();
-
-            await sendMessage(
-              platform,
-              userId,
-              `Ответ "${decision.answer}" отправлен в уровень ${decision.newLevel}\n${result.message}`
-            );
-          } else {
-            await sendMessage(
-              platform,
-              userId,
-              `❌ Ошибка при отправке: ${result.message || 'Неизвестная ошибка'}`
-            );
-          }
-
-          if (result.newCookies) {
-            user.authCookies = { ...(user.authCookies || {}), ...(result.newCookies || {}) };
-            await saveUserData();
-          }
-        } catch (error) {
-          logger.error('Ошибка отправки ответа после подтверждения:', error);
-          await sendMessage(platform, userId, `❌ Ошибка отправки: ${error.message}`);
-        }
-      } else if (data === 'answer_cancel') {
-        // Отменить отправку
-        logger.info(`🚫 Пользователь выбрал: отменить отправку "${decision.answer}"`);
-
-        user.pendingAnswerDecision = null;
-
-        // Обновляем lastKnownLevel до актуального состояния игры
-        try {
-          const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
-          const api = new EncounterAPI(user.domain, authCallback);
-          const gameState = await api.getGameState(
-            user.gameId,
-            user.authCookies,
-            user.login,
-            user.password
-          );
-
-          if (gameState.success && gameState.data?.Level) {
-            user.lastKnownLevel = {
-              levelId: gameState.data.Level.LevelId,
-              levelNumber: gameState.data.Level.Number,
-              timestamp: Date.now()
-            };
-            logger.info(
-              `📌 Обновлен lastKnownLevel после отмены ответа: уровень ${gameState.data.Level.Number} (ID: ${gameState.data.Level.LevelId})`
-            );
-          }
-        } catch (error) {
-          logger.error('⚠️ Ошибка обновления lastKnownLevel при отмене:', error.message);
-        }
-
-        await saveUserData();
-
-        if (queryId) {
-          await answerCb({
-            queryId,
-            text: '🚫 Ответ отменён'
-          });
-        }
-
-        await sendMessage(
-          platform,
-          userId,
-          `🚫 Ответ "${decision.answer}" отменён\n\n` +
-            `(Был подготовлен для уровня ${decision.oldLevel}, текущий уровень — ${decision.newLevel})`
-        );
-      }
-
-      return;
-    } catch (error) {
-      logger.error('Ошибка обработки выбора ответа:', error);
-      if (queryId) {
-        await answerCb({
-          queryId,
-          text: '❌ Ошибка обработки',
-          show_alert: true
-        });
-      }
-      return;
-    }
-  }
-
-  // Обработка кнопок управления накопленными кодами (доступно для всех платформ)
-  if (
-    data === 'batch_send_all' ||
-    data === 'batch_send_force' ||
-    data === 'batch_cancel_all' ||
-    data === 'batch_list'
-  ) {
-    try {
-      const user = getPlatformUser(platform, userId);
-
-      if (data === 'batch_send_all') {
-        // Отправить все накопленные коды
-        logger.info(
-          `✅ Пользователь выбрал: отправить ${user.accumulatedAnswers?.length || 0} накопленных кодов`
-        );
-
-        if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
-          if (queryId) {
-            await answerCb({
-              queryId,
-              text: '⚠️ Нет накопленных кодов',
-              show_alert: true
-            });
-          }
-          return;
-        }
-
-        if (queryId) {
-          await answerCb({
-            queryId,
-            text: `Отправка ${user.accumulatedAnswers.length} ${user.accumulatedAnswers.length === 1 ? 'кода' : 'кодов'}...`
-          });
-        }
-
-        // Вызываем функцию отправки пачки с защитой
-        await processBatchSend(platform, userId);
-      } else if (data === 'batch_send_force') {
-        // Принудительная отправка (когда уровень изменился, но пользователь хочет отправить в новый)
-        logger.info(`✅ Пользователь выбрал: принудительно отправить в новый уровень`);
-
-        if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
-          if (queryId) {
-            await answerCb({
-              queryId,
-              text: '⚠️ Нет накопленных кодов',
-              show_alert: true
-            });
-          }
-          return;
-        }
-
-        if (queryId) {
-          await answerCb({
-            queryId,
-            text: `Принудительная отправка...`
-          });
-        }
-
-        // Сбрасываем accumulationStartLevel чтобы обойти первую проверку
-        user.accumulationStartLevel = null;
-        await saveUserData();
-
-        // Вызываем отправку пачки
-        await processBatchSend(platform, userId);
-      } else if (data === 'batch_cancel_all') {
-        // Отменить все накопленные коды
-        const count = user.accumulatedAnswers?.length || 0;
-        logger.info(`🚫 Пользователь выбрал: отменить ${count} накопленных кодов`);
-
-        if (count === 0) {
-          if (queryId) {
-            await answerCb({
-              queryId,
-              text: '⚠️ Нет накопленных кодов',
-              show_alert: true
-            });
-          }
-          return;
-        }
-
-        // Обновляем lastKnownLevel до актуального состояния игры
-        try {
-          const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
-          const api = new EncounterAPI(user.domain, authCallback);
-          const gameState = await api.getGameState(
-            user.gameId,
-            user.authCookies,
-            user.login,
-            user.password
-          );
-
-          if (gameState.success && gameState.data?.Level) {
-            user.lastKnownLevel = {
-              levelId: gameState.data.Level.LevelId,
-              levelNumber: gameState.data.Level.Number,
-              timestamp: Date.now()
-            };
-            logger.info(
-              `📌 Обновлен lastKnownLevel после отмены пачки: уровень ${gameState.data.Level.Number} (ID: ${gameState.data.Level.LevelId})`
-            );
-          }
-        } catch (error) {
-          logger.error('⚠️ Ошибка обновления lastKnownLevel при отмене:', error.message);
-        }
-
-        // Очищаем буфер накопления
-        user.accumulatedAnswers = [];
-        user.isAccumulatingAnswers = false;
-        user.accumulationStartLevel = null;
-        if (user.accumulationTimer) {
-          clearTimeout(user.accumulationTimer);
-          user.accumulationTimer = null;
-        }
-        resetBurstState(user);
-        await saveUserData();
-
-        if (queryId) {
-          await answerCb({
-            queryId,
-            text: '🚫 Все коды отменены'
-          });
-        }
-
-        await sendMessage(
-          platform,
-          userId,
-          `🚫 Отменено ${count} ${count === 1 ? 'код' : count < 5 ? 'кода' : 'кодов'}`
-        );
-      } else if (data === 'batch_list') {
-        // Показать полный список накопленных кодов
-        logger.info(`📋 Пользователь запросил список накопленных кодов`);
-
-        if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
-          if (queryId) {
-            await answerCb({
-              queryId,
-              text: '⚠️ Нет накопленных кодов',
-              show_alert: true
-            });
-          }
-          return;
-        }
-
-        const allCodes = user.accumulatedAnswers
-          .map(
-            (item, index) => `${index + 1}. "${item.answer}" (уровень ${item.levelNumber || '?'})`
-          )
-          .join('\n');
-
-        if (queryId) {
-          await answerCb({ queryId });
-        }
-
-        await sendMessage(
-          platform,
-          userId,
-          `📋 Полный список накопленных кодов (${user.accumulatedAnswers.length}):\n\n${allCodes}`
-        );
-      }
-
-      return;
-    } catch (error) {
-      logger.error('Ошибка обработки накопленных кодов:', error);
-      if (queryId) {
-        await answerCb({
-          queryId,
-          text: '❌ Ошибка обработки',
-          show_alert: true
-        });
-      }
-      return;
-    }
-  }
-
-  // Telegram-специфичные callback'и (админ-панель)
-  if (platform !== TELEGRAM_PLATFORM) {
+  if (await handleAdminAction(data, callbackContext, answerCb)) {
     return;
   }
 
-  if (data.startsWith('admin_') && Number(chatId) !== ROOT_USER_ID) {
-    if (queryId) {
-      await answerCb({
-        queryId,
-        text: '❌ У вас нет доступа',
-        show_alert: true
-      });
-    }
-    return;
-  }
-
-  try {
-    if (data.startsWith('admin_users_')) {
-      const page = parseInt(data.split('_')[2], 10) || 0;
-      await showUsersList(chatId, messageId, page);
-      if (queryId) await answerCb({ queryId });
-    } else if (data === 'admin_moderation') {
-      await showModerationMenu(chatId, messageId);
-      if (queryId) await answerCb({ queryId });
-    } else if (data.startsWith('admin_whitelist_')) {
-      const page = parseInt(data.split('_')[2], 10) || 0;
-      clearUserState(platform, userId);
-      await showWhitelistMenu(chatId, messageId, page);
-      if (queryId) await answerCb({ queryId });
-    } else if (data === 'admin_back') {
-      clearUserState(platform, userId);
-      if (messageId) {
-        await deleteMessage(platform, chatId, messageId);
-      }
-      await showAdminMainMenu(chatId);
-      if (queryId) await answerCb({ queryId });
-    } else if (data === 'moderation_toggle') {
-      adminConfig.moderationEnabled = !adminConfig.moderationEnabled;
-      await saveAdminConfig();
-      await showModerationMenu(chatId, messageId);
-      if (queryId) {
-        await answerCb({
-          queryId,
-          text: adminConfig.moderationEnabled ? '✅ Модерация включена' : '❌ Модерация выключена'
-        });
-      }
-    } else if (data === 'whitelist_add') {
-      await handleWhitelistAdd(chatId, messageId);
-      if (queryId) await answerCb({ queryId });
-    } else if (data.startsWith('whitelist_remove_')) {
-      const index = parseInt(data.split('_')[2], 10);
-      await handleWhitelistRemove(chatId, messageId, index, queryId);
-      if (queryId) {
-        await answerCb({
-          queryId,
-          text: '🗑️ Удалено из белого списка'
-        });
-      }
-    } else if (queryId) {
-      await answerCb({ queryId });
-    }
-  } catch (error) {
-    logger.error('Ошибка обработки callback_query:', error);
-    if (queryId) {
-      await answerCb({
-        queryId,
-        text: '❌ Ошибка обработки команды',
-        show_alert: true
-      });
-    }
-  }
+  await answerCb();
 }
 
 /**
@@ -969,326 +627,9 @@ async function handleCallback(context) {
  * 2. Проверка уровня ПОСЛЕ каждого отправленного кода
  */
 async function processBatchSend(platform, userId) {
-  const user = getPlatformUser(platform, userId);
-
-  if (!user.accumulatedAnswers || user.accumulatedAnswers.length === 0) {
-    logger.info(`⚠️ Нет накопленных кодов для отправки`);
-    await sendMessage(platform, userId, '⚠️ Нет накопленных кодов');
-    return;
-  }
-
-  const totalCodes = user.accumulatedAnswers.length;
-  const startLevel = user.accumulationStartLevel;
-
-  logger.info(
-    `📤 Начало отправки пачки: ${totalCodes} кодов (уровень на момент накопления: ${startLevel?.levelNumber || '?'})`
-  );
-
-  try {
-    // 🛡️ ЗАЩИТА УРОВЕНЬ 1: Проверка ПЕРЕД началом отправки
-    logger.info(`🔍 Проверка уровня ПЕРЕД отправкой пачки...`);
-
-    const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
-    const api = new EncounterAPI(user.domain, authCallback);
-
-    const gameState = await api.getGameState(
-      user.gameId,
-      user.authCookies,
-      user.login,
-      user.password
-    );
-
-    if (!gameState.success || !gameState.data || !gameState.data.Level) {
-      throw new Error('Не удалось получить состояние игры');
-    }
-
-    const currentLevelId = gameState.data.Level.LevelId;
-    const currentLevelNumber = gameState.data.Level.Number;
-
-    logger.info(
-      `📋 Уровень на момент накопления: ${startLevel?.levelNumber} (ID: ${startLevel?.levelId})`
-    );
-    logger.info(`📋 Текущий уровень: ${currentLevelNumber} (ID: ${currentLevelId})`);
-
-    // Если уровень изменился - предупреждаем
-    if (startLevel?.levelId && currentLevelId !== startLevel.levelId) {
-      logger.info(
-        `⚠️ Уровень изменился (${startLevel.levelNumber} → ${currentLevelNumber}), спрашиваем пользователя`
-      );
-
-      const codesList = user.accumulatedAnswers
-        .slice(0, 5)
-        .map((item, index) => `${index + 1}. "${item.answer}"`)
-        .join('\n');
-      const moreCodesText = totalCodes > 5 ? `\n... и ещё ${totalCodes - 5}` : '';
-
-      const messageText =
-        `⚠️ Уровень изменился (${startLevel.levelNumber} → ${currentLevelNumber})\n\n` +
-        `Накоплено ${totalCodes} ${totalCodes === 1 ? 'код' : totalCodes < 5 ? 'кода' : 'кодов'}:\n${codesList}${moreCodesText}\n\n` +
-        `Что делать?`;
-
-      const options = createInlineKeyboard(platform, [
-        [
-          { text: `✅ Отправить в уровень ${currentLevelNumber}`, action: 'batch_send_force' },
-          { text: '🚫 Отменить', action: 'batch_cancel_all' }
-        ]
-      ]);
-
-      await sendMessage(platform, userId, messageText, options);
-      return;
-    }
-
-    logger.info(`✅ Уровень не изменился, начинаем отправку`);
-
-    const normalizeCount = value => {
-      if (value === undefined || value === null) {
-        return null;
-      }
-      const numeric = Number(value);
-      return Number.isFinite(numeric) ? numeric : null;
-    };
-
-    const formatSectors = (passed, required) => {
-      if (passed === null || required === null) {
-        return '—';
-      }
-      return `${passed}/${required}`;
-    };
-
-    let latestLevelNumber = currentLevelNumber ?? null;
-    let latestPassed = normalizeCount(gameState.data.Level?.PassedSectorsCount);
-    let latestRequired = normalizeCount(gameState.data.Level?.RequiredSectorsCount);
-
-    // Начинаем отправку
-    let sent = 0;
-    let stopped = false;
-    const batchCopy = [...user.accumulatedAnswers];
-    const sentCodes = []; // Статистика отправленных кодов
-
-    const initialMessage = formatBatchProgress({
-      progress: 0,
-      total: totalCodes,
-      answer: batchCopy[0]?.answer ?? '—',
-      statusText: '⏳ Подготовка...',
-      levelNumber: latestLevelNumber,
-      sectorsText: formatSectors(latestPassed, latestRequired)
-    });
-
-    const progressMsg = await sendMessage(platform, userId, initialMessage);
-
-    for (let i = 0; i < batchCopy.length; i++) {
-      const item = batchCopy[i];
-      const processed = i + 1;
-
-      logger.info(`📤 Отправка кода ${i + 1}/${totalCodes}: "${item.answer}"`);
-
-      const sendingMessage = formatBatchProgress({
-        progress: processed,
-        total: totalCodes,
-        answer: item.answer,
-        statusText: '⏳ Отправляю...',
-        levelNumber: latestLevelNumber,
-        sectorsText: formatSectors(latestPassed, latestRequired)
-      });
-
-      await sendOrUpdateMessage(platform, userId, sendingMessage, progressMsg.message_id);
-
-      try {
-        const result = await api.sendAnswer(
-          user.gameId,
-          item.answer,
-          user.authCookies,
-          user.login,
-          user.password,
-          false,
-          currentLevelId
-        );
-
-        if (result.success) {
-          sent++;
-          logger.info(`✅ Код "${item.answer}" отправлен (${sent}/${totalCodes})`);
-
-          if (result.level) {
-            latestLevelNumber = result.level.Number ?? latestLevelNumber;
-            latestPassed = normalizeCount(result.level.PassedSectorsCount);
-            latestRequired = normalizeCount(result.level.RequiredSectorsCount);
-          }
-
-          const statusText = formatStatusText(result.message);
-          const statusMessage = formatBatchProgress({
-            progress: processed,
-            total: totalCodes,
-            answer: item.answer,
-            statusText,
-            levelNumber: latestLevelNumber,
-            sectorsText: formatSectors(latestPassed, latestRequired)
-          });
-
-          await sendOrUpdateMessage(platform, userId, statusMessage, progressMsg.message_id);
-
-          // Собираем детальную статистику
-          const codeStats = {
-            answer: item.answer,
-            statusText,
-            levelNumber: latestLevelNumber ?? currentLevelNumber,
-            levelName: result.level?.Name || 'N/A',
-            sectors: formatSectors(latestPassed, latestRequired)
-          };
-          sentCodes.push(codeStats);
-
-          // 🛡️ ЗАЩИТА УРОВЕНЬ 2: Проверка ПОСЛЕ отправки кода
-          if (result.level && result.level.LevelId !== currentLevelId) {
-            logger.info(
-              `⚠️ Уровень изменился во время отправки (${currentLevelNumber} → ${result.level.Number})`
-            );
-            stopped = true;
-
-            // Удаляем отправленные коды из буфера
-            user.accumulatedAnswers.splice(0, sent);
-            await saveUserData();
-
-            const remaining = totalCodes - sent;
-            const remainingList = user.accumulatedAnswers
-              .slice(0, 5)
-              .map(code => `"${code.answer}"`)
-              .join(', ');
-            const moreText = remaining > 5 ? ` и ещё ${remaining - 5}` : '';
-
-            const messageText =
-              `⚠️ Уровень изменился во время отправки!\n\n` +
-              `📊 Отправлено: ${sent}/${totalCodes}\n` +
-              `📦 Осталось: ${remaining}\n\n` +
-              `Оставшиеся коды: ${remainingList}${moreText}\n\n` +
-              `Что делать с оставшимися кодами?`;
-
-            const options = createInlineKeyboard(platform, [
-              [
-                { text: `✅ Отправить в уровень ${result.level.Number}`, action: 'batch_send_force' },
-                { text: '🚫 Отменить', action: 'batch_cancel_all' }
-              ]
-            ]);
-
-            await sendMessage(platform, userId, messageText, options);
-            break;
-          }
-
-          if (result.newCookies) {
-            user.authCookies = { ...(user.authCookies || {}), ...(result.newCookies || {}) };
-            await saveUserData();
-          }
-        } else {
-          const statusText = `❌ ${result.message || 'Не отправлен'}`;
-          const statusMessage = formatBatchProgress({
-            progress: processed,
-            total: totalCodes,
-            answer: item.answer,
-            statusText,
-            levelNumber: latestLevelNumber,
-            sectorsText: formatSectors(latestPassed, latestRequired)
-          });
-
-          await sendOrUpdateMessage(platform, userId, statusMessage, progressMsg.message_id);
-
-          sentCodes.push({
-            answer: item.answer,
-            statusText,
-            levelNumber: latestLevelNumber ?? currentLevelNumber,
-            levelName: result.level?.Name || 'N/A',
-            sectors: formatSectors(latestPassed, latestRequired)
-          });
-        }
-      } catch (error) {
-        logger.error(`❌ Ошибка отправки кода "${item.answer}":`, error.message);
-
-        // Если уровень изменился - прерываем
-        if (error instanceof LevelChangedError || error.isLevelChanged) {
-          stopped = true;
-
-          user.accumulatedAnswers.splice(0, sent);
-          await saveUserData();
-
-          await sendMessage(
-            platform,
-            userId,
-            `⚠️ Уровень изменился во время отправки!\n\n` +
-              `📊 Отправлено: ${sent}/${totalCodes}\n` +
-              `📦 Осталось: ${totalCodes - sent}\n\n` +
-              `Используйте кнопки выше для выбора.`
-          );
-          break;
-        }
-
-        // Для других ошибок - продолжаем
-        const statusText = `❌ Ошибка: ${error.message}`;
-        const statusMessage = formatBatchProgress({
-          progress: processed,
-          total: totalCodes,
-          answer: item.answer,
-          statusText,
-          levelNumber: latestLevelNumber,
-          sectorsText: formatSectors(latestPassed, latestRequired)
-        });
-
-        await sendOrUpdateMessage(platform, userId, statusMessage, progressMsg.message_id);
-
-        sentCodes.push({
-          answer: item.answer,
-          statusText,
-          levelNumber: latestLevelNumber ?? currentLevelNumber,
-          levelName: 'N/A',
-          sectors: formatSectors(latestPassed, latestRequired)
-        });
-      }
-
-      // Задержка между отправками
-      if (i < batchCopy.length - 1) {
-        logger.info('⏱️ Задержка 1.2 секунды перед следующим кодом...');
-        await new Promise(resolve => setTimeout(resolve, 1200));
-      }
-    }
-
-    if (!stopped) {
-      // Все коды отправлены успешно
-      user.accumulatedAnswers = [];
-      user.isAccumulatingAnswers = false;
-      user.accumulationStartLevel = null;
-      if (user.accumulationTimer) {
-        clearTimeout(user.accumulationTimer);
-        user.accumulationTimer = null;
-      }
-      await saveUserData();
-
-      // Формируем детальный итоговый отчет
-      let finalReport = `✅ Пачка отправлена!\n\n📊 Отправлено: ${sent}/${totalCodes}`;
-
-      if (sentCodes.length > 0) {
-        finalReport += `\n\n📋 Детальный отчет:\n\n`;
-        sentCodes.forEach((code, index) => {
-          const num = index + 1;
-          finalReport += `${num}. "${code.answer}"\n`;
-          const levelDisplay = code.levelNumber ?? '—';
-          finalReport += `   ${code.statusText} | Уровень: ${levelDisplay}\n`;
-          if (index < sentCodes.length - 1) {
-            finalReport += `\n`;
-          }
-        });
-
-        // Показываем текущее состояние игры
-        const lastCode = sentCodes[sentCodes.length - 1];
-        const levelSummary = lastCode.levelNumber ?? '—';
-        finalReport += `\n📍 Текущий уровень: ${levelSummary}`;
-        if (lastCode.sectors && lastCode.sectors !== '—') {
-          finalReport += `\n📊 Текущие сектора: ${lastCode.sectors}`;
-        }
-      }
-
-      await sendOrUpdateMessage(platform, userId, finalReport, progressMsg.message_id);
-    }
-  } catch (error) {
-    logger.error('Ошибка отправки пачки:', error);
-    await sendMessage(platform, userId, `❌ Ошибка отправки пачки: ${error.message}`);
-  }
+  return executeBatchSend(platform, userId);
 }
+
 
 async function handleTextMessage(context) {
   const { platform, userId, text = '', from } = context;
@@ -1495,329 +836,9 @@ module.exports = {
   sendOrUpdateMessage
 };
 
-async function handleReadyStateInput(platform, userId, user, text, context) {
-  if (text === '🔄 Рестарт бота') {
-    await handleStartCommand(context);
-    return;
-  }
 
-  if (text === 'Задание' || text === 'Задание (формат)') {
-    const formatted = text === 'Задание (формат)';
-    await sendLevelTask(platform, userId, user, formatted);
-    return;
-  }
 
-  if (text === 'Сектора') {
-    if (!(await checkGameAccess(platform, userId))) {
-      return;
-    }
 
-    const waitMsg = await sendMessage(platform, userId, '🔄 Получаю список секторов...');
-    try {
-      // Используем централизованную авторизацию с мьютексом
-      const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
-      const api = new EncounterAPI(user.domain, authCallback);
-
-      // Предварительная авторизация если нет cookies
-      await ensureAuthenticated(user, EncounterAPI, saveUserData);
-
-      let gameState;
-      try {
-        gameState = await api.getGameState(
-          user.gameId,
-          user.authCookies,
-          user.login,
-          user.password
-        );
-      } catch (e) {
-        const msg = String(e.message || '').toLowerCase();
-        if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
-          const reauth = await api.authenticate(user.login, user.password);
-          if (!reauth.success) {
-            throw new Error(reauth.message || 'Не удалось авторизоваться');
-          }
-          user.authCookies = reauth.cookies;
-          await saveUserData();
-          gameState = await api.getGameState(user.gameId, user.authCookies);
-        } else {
-          throw e;
-        }
-      }
-
-      if (!gameState || !gameState.success) {
-        throw new Error('Не удалось получить состояние игры');
-      }
-
-      let model = gameState.data;
-      if (model.Event !== 0) {
-        if (model.Event === 16) {
-          gameState = await api.getGameState(user.gameId, user.authCookies);
-          if (!gameState.success || gameState.data.Event !== 0) {
-            await sendOrUpdateMessage(
-              platform,
-              userId,
-              '⚠️ Игра неактивна или недоступна сейчас.',
-              waitMsg?.message_id
-            );
-            return;
-          }
-          model = gameState.data;
-        } else {
-          await sendOrUpdateMessage(
-            platform,
-            userId,
-            '⚠️ Игра неактивна или недоступна сейчас.',
-            waitMsg?.message_id
-          );
-          return;
-        }
-      }
-
-      const level = model.Level;
-      if (!level) {
-        await sendOrUpdateMessage(
-          platform,
-          userId,
-          '⚠️ Активный уровень не найден.',
-          waitMsg?.message_id
-        );
-        return;
-      }
-
-      const sectors = Array.isArray(level.Sectors) ? level.Sectors : [];
-      const totalRequired = Number(level.RequiredSectorsCount) || 0;
-      const passedCount = Number(level.PassedSectorsCount) || 0;
-      const leftToClose = Math.max(totalRequired - passedCount, 0);
-
-      const sectorsMessage = formatSectorsMessage({
-        platform,
-        telegramPlatform: TELEGRAM_PLATFORM,
-        sectors,
-        totalRequired,
-        totalCount: sectors.length,
-        passedCount,
-        leftToClose
-      });
-
-      if (waitMsg?.message_id) {
-        if (sectorsMessage.text.length <= 4000) {
-          await editMessage(
-            platform,
-            userId,
-            waitMsg.message_id,
-            sectorsMessage.text,
-            sectorsMessage.options
-          );
-        } else {
-          await editMessage(
-            platform,
-            userId,
-            waitMsg.message_id,
-            sectorsMessage.header,
-            sectorsMessage.options
-          );
-          for (const chunk of splitMessageBody(sectorsMessage.body, 4000)) {
-            await sendMessage(platform, userId, chunk, sectorsMessage.options);
-          }
-        }
-      } else {
-        await sendMessage(platform, userId, sectorsMessage.text, sectorsMessage.options);
-      }
-    } catch (error) {
-      await sendOrUpdateMessage(
-        platform,
-        userId,
-        `❌ Не удалось получить сектора: ${error.message}`,
-        waitMsg?.message_id
-      );
-    }
-    return;
-  }
-
-  if (text === '📊 Статус очереди') {
-    const queueLength = user.answerQueue.length;
-    const status = user.isOnline ? '🟢 Онлайн' : '🔴 Оффлайн';
-    const queueText =
-      queueLength > 0
-        ? 'Очередь:\n' +
-          user.answerQueue
-            .map(
-              (item, index) =>
-                `${index + 1}. "${item.answer}" (${new Date(item.timestamp).toLocaleTimeString()})`
-            )
-            .join('\n')
-        : 'Очередь пуста';
-
-    await sendMessage(
-      platform,
-      userId,
-      `Статус: ${status}\n` + `Ответов в очереди: ${queueLength}\n\n` + queueText
-    );
-    return;
-  }
-
-  if (text === '🔗 Сменить игру') {
-    if (!(await checkGameAccess(platform, userId))) {
-      return;
-    }
-
-    resetUserRuntimeState(user);
-    user.authCookies = null;
-    await saveUserData();
-    setUserState(platform, userId, STATES.WAITING_FOR_GAME_URL);
-    await sendMessage(
-      platform,
-      userId,
-      'Пришлите новую ссылку на игру:\n\n' +
-        '• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n' +
-        '• https://domain.en.cx/gameengines/encounter/play/XXXXX/'
-    );
-    return;
-  }
-
-  if (text === '👤 Сменить авторизацию') {
-    resetUserRuntimeState(user);
-    user.authCookies = null;
-    await saveUserData();
-    setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
-    await sendMessage(platform, userId, 'Введите новый логин:');
-    return;
-  }
-
-  if (!(await checkGameAccess(platform, userId))) {
-    return;
-  }
-
-  const progressMessage = await sendMessage(platform, userId, `⏳ Отправляю ответ "${text}"...`);
-  const progressMessageId =
-    progressMessage?.message_id ?? progressMessage?.conversation_message_id ?? null;
-  const result = await queueAnswerForProcessing(platform, userId, user, text, progressMessageId);
-
-  if (result && user.answerQueue.length > 0) {
-    setTimeout(() => processAnswerQueue(platform, userId), 1200);
-  }
-}
-
-async function sendLevelTask(platform, userId, user, formatted) {
-  if (!(await checkGameAccess(platform, userId))) {
-    return;
-  }
-
-  const waitText = formatted
-    ? '🔄 Получаю форматированное задание текущего уровня...'
-    : '🔄 Получаю задание текущего уровня...';
-
-  const waitMsg = await sendMessage(platform, userId, waitText);
-
-  try {
-    // Используем централизованную авторизацию с мьютексом
-    const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
-    const api = new EncounterAPI(user.domain, authCallback);
-
-    // Предварительная авторизация если нет cookies
-    await ensureAuthenticated(user, EncounterAPI, saveUserData);
-
-    let gameState;
-    try {
-      gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
-    } catch (error) {
-      const msg = String(error.message || '').toLowerCase();
-      if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
-        const reauth = await api.authenticate(user.login, user.password);
-        if (!reauth.success) {
-          throw new Error(reauth.message || 'Не удалось авторизоваться');
-        }
-        user.authCookies = reauth.cookies;
-        await saveUserData();
-        gameState = await api.getGameState(user.gameId, user.authCookies);
-      } else {
-        throw error;
-      }
-    }
-
-    if (!gameState || !gameState.success) {
-      throw new Error('Не удалось получить состояние игры');
-    }
-
-    let model = gameState.data;
-    if (model.Event !== 0) {
-      if (model.Event === 16) {
-        gameState = await api.getGameState(user.gameId, user.authCookies);
-        if (!gameState.success || gameState.data.Event !== 0) {
-          await sendOrUpdateMessage(
-            platform,
-            userId,
-            '⚠️ Игра неактивна или недоступна сейчас.',
-            waitMsg?.message_id
-          );
-          return;
-        }
-        model = gameState.data;
-      } else {
-        await sendOrUpdateMessage(
-          platform,
-          userId,
-          '⚠️ Игра неактивна или недоступна сейчас.',
-          waitMsg?.message_id
-        );
-        return;
-      }
-    }
-
-    const level = model.Level;
-    if (!level) {
-      await sendOrUpdateMessage(
-        platform,
-        userId,
-        '⚠️ Активный уровень не найден.',
-        waitMsg?.message_id
-      );
-      return;
-    }
-
-    const taskFragments = collectTaskFragments(level.Tasks, { formatted });
-    const helps = collectHelps(level.Helps, { formatted });
-    const timeoutRemain = formatRemain(level.TimeoutSecondsRemain);
-
-    const taskMessage = formatTaskMessage({
-      platform,
-      telegramPlatform: TELEGRAM_PLATFORM,
-      level,
-      taskFragments,
-      helps,
-      timeoutRemain,
-      formatted
-    });
-
-    if (waitMsg?.message_id) {
-      const editOptions = { ...taskMessage.options };
-      if (waitMsg?.conversation_message_id != null) {
-        editOptions.conversationMessageId = waitMsg.conversation_message_id;
-      }
-
-      if (taskMessage.text.length <= 4000) {
-        await editMessage(platform, userId, waitMsg.message_id, taskMessage.text, editOptions);
-      } else {
-        await editMessage(platform, userId, waitMsg.message_id, taskMessage.header, editOptions);
-        for (const chunk of splitMessageBody(taskMessage.body, 4000)) {
-          await sendMessage(platform, userId, chunk, taskMessage.options);
-        }
-      }
-    } else {
-      await sendMessage(platform, userId, taskMessage.text, taskMessage.options);
-    }
-  } catch (error) {
-    const errorPrefix = formatted
-      ? '❌ Не удалось получить форматированное задание'
-      : '❌ Не удалось получить задание';
-    await sendOrUpdateMessage(
-      platform,
-      userId,
-      `${errorPrefix}: ${error.message}`,
-      waitMsg?.message_id
-    );
-  }
-}
 
 // Состояния бота
 const STATES = {
@@ -2351,3 +1372,9 @@ module.exports = {
   handleTextMessage,
   sendOrUpdateMessage
 };
+
+
+
+
+
+
