@@ -17,6 +17,9 @@ const {
   formatStatusText,
   formatRemain
 } = require('../presentation/message-formatter');
+const { createAuthSetupHandler } = require('./auth/setup-handler');
+const { createAdminMenu, WHITELIST_INPUT_STATE } = require('./admin/menu');
+const { createTelegramContextFactory } = require('./router/context/telegram');
 const { createBatchSender } = require('./router/services/batch-sender');
 const { createQueueCallbackHandler } = require('./router/callbacks/queue-handler');
 const { createAnswerCallbackHandler } = require('./router/callbacks/answer-handler');
@@ -51,6 +54,34 @@ let sendAnswerToEncounter = async () => {
 let processAnswerQueue = async () => {
   throw new Error('Answer service API не инициализирован');
 };
+
+const STATES = {
+  WAITING_FOR_LOGIN: 'waiting_for_login',
+  WAITING_FOR_PASSWORD: 'waiting_for_password',
+  WAITING_FOR_GAME_URL: 'waiting_for_game_url',
+  READY: 'ready',
+  WAITING_FOR_ANSWER: 'waiting_for_answer'
+};
+
+const MAIN_MENU_LAYOUT = [
+  ['Задание', 'Задание (формат)'],
+  ['Сектора'],
+  ['🔗 Сменить игру', '👤 Сменить авторизацию'],
+  ['🔄 Рестарт бота']
+];
+
+function createMainKeyboard(platform) {
+  const buttons = MAIN_MENU_LAYOUT.map(row =>
+    row.map(label => ({
+      text: label,
+      action: label,
+      payload: { type: 'main_menu', value: label },
+      color: 'secondary'
+    }))
+  );
+
+  return createReplyKeyboard(platform, buttons, { resize: true, oneTime: false });
+}
 
 const setPlatformConfig = ({ telegram, vk: _vk, rootUserId } = {}) => {
   if (telegram) {
@@ -142,6 +173,31 @@ const batchCallbackHandler = createBatchCallbackHandler({
   EncounterAPI,
   resetBurstState
 });
+const {
+  showAdminMainMenu,
+  showUsersList,
+  showModerationMenu,
+  showWhitelistMenu,
+  handleWhitelistAdd,
+  handleWhitelistRemove,
+  handleWhitelistManualEntry
+} = createAdminMenu({
+  logger,
+  userData,
+  adminConfig,
+  saveAdminConfig,
+  createInlineKeyboard,
+  editTelegramMessage,
+  sendMessage,
+  setUserState,
+  clearUserState,
+  answerTelegramCallback,
+  getTelegramPlatform: () => TELEGRAM_PLATFORM
+});
+const {
+  createMessageContext: createTelegramContext,
+  createCallbackContext: createTelegramCallbackContext
+} = createTelegramContextFactory(() => TELEGRAM_PLATFORM);
 const adminCallbackHandler = createAdminCallbackHandler({
   logger,
   getTelegramPlatform: () => TELEGRAM_PLATFORM,
@@ -179,6 +235,17 @@ const { handleReadyStateInput } = createReadyStateHandler({
   resetUserRuntimeState,
   queueAnswerForProcessing,
   processAnswerQueue: (platform, userId) => processAnswerQueue(platform, userId)
+});
+const { handleLoginInput, handlePasswordInput, handleGameUrlInput } = createAuthSetupHandler({
+  sendMessage,
+  setUserState,
+  saveUserData,
+  checkGameAccess,
+  parseGameUrl,
+  createMainKeyboard,
+  logger,
+  STATES,
+  EncounterAPI
 });
 
 const ADMIN_ACTIONS = new Set(['admin_moderation','admin_back','moderation_toggle','whitelist_add']);
@@ -230,51 +297,6 @@ const editTelegramMessage = (arg1, arg2, arg3, arg4) => {
 
 const answerTelegramCallback = (queryId, options = {}) =>
   answerCallback(TELEGRAM_PLATFORM, { queryId, ...options });
-
-function createTelegramContext(msg, overrides = {}) {
-  const chatId = String(msg.chat?.id ?? '');
-  return {
-    platform: TELEGRAM_PLATFORM,
-    userId: chatId,
-    text: msg.text ?? '',
-    from: msg.from
-      ? {
-          id: msg.from.id,
-          username: msg.from.username,
-          firstName: msg.from.first_name,
-          lastName: msg.from.last_name
-        }
-      : null,
-    meta: {
-      chatId: msg.chat?.id,
-      messageId: msg.message_id,
-      chatType: msg.chat?.type,
-      chat: msg.chat,
-      raw: msg
-    },
-    ...overrides
-  };
-}
-
-function createTelegramCallbackContext(query, overrides = {}) {
-  const chatId = query.message?.chat?.id ?? query.from?.id;
-  const messageId = query.message?.message_id;
-  return {
-    platform: TELEGRAM_PLATFORM,
-    userId: String(chatId ?? ''),
-    text: query.data ?? '',
-    payload: query.data,
-    meta: {
-      chatId,
-      messageId,
-      queryId: query.id,
-      raw: query,
-      from: query.from,
-      message: query.message
-    },
-    ...overrides
-  };
-}
 
 async function handleResetCommand(context) {
   const { platform, userId } = context;
@@ -520,34 +542,25 @@ async function handleStartCommand(context) {
   }
 }
 
+const COMMAND_HANDLERS = {
+  reset: handleResetCommand,
+  test: handleTestCommand,
+  admin: handleAdminCommand,
+  list: handleListCommand,
+  clear: handleClearCommand,
+  cancel: handleCancelCommand,
+  start: handleStartCommand
+};
+
 async function handleCommand(context) {
   const command = (context.commandName || '').toLowerCase();
 
-  switch (command) {
-    case 'reset':
-      await handleResetCommand(context);
-      break;
-    case 'test':
-      await handleTestCommand(context);
-      break;
-    case 'admin':
-      await handleAdminCommand(context);
-      break;
-    case 'list':
-      await handleListCommand(context);
-      break;
-    case 'clear':
-      await handleClearCommand(context);
-      break;
-    case 'cancel':
-      await handleCancelCommand(context);
-      break;
-    case 'start':
-      await handleStartCommand(context);
-      break;
-    default:
-      break;
+  const handler = COMMAND_HANDLERS[command];
+  if (!handler) {
+    return;
   }
+
+  await handler(context);
 }
 
 async function handleCallback(context) {
@@ -666,53 +679,12 @@ async function handleTextMessage(context) {
     }
   }
 
-  if (
-    currentState === 'WAITING_FOR_WHITELIST_ENTRY' &&
-    platform === TELEGRAM_PLATFORM &&
-    Number(userId) === ROOT_USER_ID
-  ) {
+  if (currentState === WHITELIST_INPUT_STATE && platform === TELEGRAM_PLATFORM && Number(userId) === ROOT_USER_ID) {
     await handleWhitelistManualEntry(platform, userId, messageText.trim());
     return;
   }
 
   await processStateInput(platform, userId, user, currentState, messageText, context);
-}
-
-async function handleWhitelistManualEntry(platform, userId, loginInput) {
-  if (platform !== TELEGRAM_PLATFORM) {
-    return;
-  }
-
-  const login = loginInput.trim();
-
-  if (login.length < 2) {
-    await sendMessage(platform, userId, '❌ Логин должен содержать минимум 2 символа');
-    return;
-  }
-
-  const exists = adminConfig.whitelist.some(item => {
-    const itemLogin = item.login || (item.type === 'encounter' ? item.value : null);
-    return itemLogin && itemLogin.toLowerCase() === login.toLowerCase();
-  });
-
-  if (exists) {
-    await sendMessage(platform, userId, '⚠️ Этот логин уже есть в белом списке');
-    clearUserState(platform, userId);
-    return;
-  }
-
-  adminConfig.whitelist.push({
-    login,
-    addedBy: userId,
-    addedAt: Date.now()
-  });
-
-  await saveAdminConfig();
-  await sendMessage(platform, userId, `✅ Добавлено в белый список:\n🎮 <code>${login}</code>`, {
-    parse_mode: 'HTML'
-  });
-
-  clearUserState(platform, userId);
 }
 
 async function processStateInput(platform, userId, user, currentState, text, context) {
@@ -740,92 +712,6 @@ async function processStateInput(platform, userId, user, currentState, text, con
   }
 }
 
-async function handleLoginInput(platform, userId, user, text) {
-  user.login = text;
-  setUserState(platform, userId, STATES.WAITING_FOR_PASSWORD);
-  await sendMessage(platform, userId, `Логин сохранен: ${text}\nТеперь введите пароль:`);
-}
-
-async function handlePasswordInput(platform, userId, user, text) {
-  user.password = text;
-
-  if (!user.login || !user.password || user.login.length < 2 || user.password.length < 2) {
-    setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
-    await sendMessage(
-      platform,
-      userId,
-      '❌ Логин и пароль должны содержать минимум 2 символа.\nВведите логин еще раз:'
-    );
-    return;
-  }
-
-  await sendMessage(platform, userId, '🔄 Проверяю данные авторизации...');
-
-  try {
-    const authResult = await checkAuthentication(user.login, user.password);
-
-    if (authResult.success) {
-      user.authCookies = authResult.cookies;
-      await saveUserData();
-      setUserState(platform, userId, STATES.WAITING_FOR_GAME_URL);
-      await sendMessage(
-        platform,
-        userId,
-        '✅ Авторизация успешна!\nТеперь пришлите ссылку на игру Encounter.\n\n' +
-          'Поддерживаемые форматы:\n' +
-          '• https://domain.en.cx/GameDetails.aspx?gid=XXXXX\n' +
-          '• https://domain.en.cx/gameengines/encounter/play/XXXXX/'
-      );
-    } else {
-      setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
-      await sendMessage(platform, userId, `❌ ${authResult.message}\nВведите логин еще раз:`);
-    }
-  } catch (error) {
-    setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
-    await sendMessage(
-      platform,
-      userId,
-      `❌ Ошибка проверки авторизации: ${error.message}\nВведите логин еще раз:`
-    );
-  }
-}
-
-async function handleGameUrlInput(platform, userId, user, text) {
-  if (!(await checkGameAccess(platform, userId))) {
-    return;
-  }
-
-  const gameUrlResult = parseGameUrl(text);
-
-  if (!gameUrlResult.success) {
-    await sendMessage(platform, userId, `❌ ${gameUrlResult.message}\n\nПопробуйте еще раз:`);
-    return;
-  }
-
-  if (user.domain && user.domain !== gameUrlResult.domain) {
-    logger.info(
-      `🔄 Домен изменился с ${user.domain} на ${gameUrlResult.domain}, сбрасываем cookies`
-    );
-    user.authCookies = null;
-  }
-
-  user.domain = gameUrlResult.domain;
-  user.gameId = gameUrlResult.gameId;
-  setUserState(platform, userId, STATES.READY);
-  await saveUserData();
-
-  const message =
-    '🎉 Настройка завершена!\n\n' +
-    `👤 Логин: ${user.login}\n` +
-    `🌐 Домен: ${user.domain}\n` +
-    `🎮 ID игры: ${user.gameId}\n` +
-    `🔗 Тип ссылки: ${gameUrlResult.type}\n\n` +
-    'Теперь вы можете отправлять ответы! Просто напишите ответ в чат.';
-
-  const keyboardOptions = createMainKeyboard(platform);
-  await sendMessage(platform, userId, message, keyboardOptions);
-}
-
 module.exports = {
   setPlatformConfig,
   setAnswerServiceApi,
@@ -835,41 +721,6 @@ module.exports = {
   handleTextMessage,
   sendOrUpdateMessage
 };
-
-
-
-
-
-// Состояния бота
-const STATES = {
-  WAITING_FOR_LOGIN: 'waiting_for_login',
-  WAITING_FOR_PASSWORD: 'waiting_for_password',
-  WAITING_FOR_GAME_URL: 'waiting_for_game_url',
-  READY: 'ready',
-  WAITING_FOR_ANSWER: 'waiting_for_answer'
-};
-
-// Создание клавиатуры для главного меню
-const MAIN_MENU_LAYOUT = [
-  ['Задание', 'Задание (формат)'],
-  ['Сектора'],
-  ['🔗 Сменить игру', '👤 Сменить авторизацию'],
-  ['🔄 Рестарт бота']
-];
-
-function createMainKeyboard(platform) {
-  const buttons = MAIN_MENU_LAYOUT.map(row =>
-    row.map(label => ({
-      text: label,
-      action: label,
-      payload: { type: 'main_menu', value: label },
-      color: 'secondary'
-    }))
-  );
-
-  return createReplyKeyboard(platform, buttons, { resize: true, oneTime: false });
-}
-
 /**
  * Проверка пользователя в whitelist
  * @param {string} platform - идентификатор платформы
@@ -1047,275 +898,6 @@ async function sendOrUpdateMessage(platform, userId, text, messageId = null, opt
   }
 }
 
-// Отправка ответа в игру Encounter
-// Функция для парсинга ссылки на игру
-// Проверка авторизации
-async function checkAuthentication(login, password, domain = 'https://world.en.cx') {
-  try {
-    const api = new EncounterAPI(domain);
-    const result = await api.authenticate(login, password);
-    return result; // Возвращаем полный результат, а не только success
-  } catch (error) {
-    logger.error('Ошибка проверки авторизации:', error.message);
-    // Если нет домена, принимаем базовую проверку
-    return {
-      success: login.length > 0 && password.length > 0,
-      message:
-        login.length > 0 && password.length > 0
-          ? 'Базовая проверка пройдена'
-          : 'Логин или пароль не могут быть пустыми'
-    };
-  }
-}
-
-/**
- * Показать список пользователей с пагинацией
- */
-async function showUsersList(chatId, messageId, page = 0) {
-  const USERS_PER_PAGE = 10;
-  const users = Array.from(userData.entries());
-  const totalPages = Math.ceil(users.length / USERS_PER_PAGE);
-  const start = page * USERS_PER_PAGE;
-  const end = start + USERS_PER_PAGE;
-  const pageUsers = users.slice(start, end);
-
-  if (users.length === 0) {
-    const message = '👥 <b>Пользователи</b>\n\nПользователей пока нет';
-    const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, [
-      [{ text: '◀️ Назад', action: 'admin_back' }]
-    ]);
-
-    await editTelegramMessage(message, {
-      chat_id: chatId,
-      message_id: messageId,
-      parse_mode: 'HTML',
-      ...keyboardOptions
-    });
-    return;
-  }
-
-  let message = `👥 <b>Пользователи</b> (страница ${page + 1}/${totalPages})\n\n`;
-
-  for (const [storageKey, user] of pageUsers) {
-    const [keyPlatform, ...restKey] = storageKey.split('::');
-    const platform = user.platform || keyPlatform || TELEGRAM_PLATFORM;
-    const plainUserId = user.userId || (restKey.length > 0 ? restKey.join('::') : storageKey);
-    const username = user.telegramUsername
-      ? `@${user.telegramUsername}`
-      : user.telegramFirstName || 'Без имени';
-    const login = user.login || '—';
-    const firstActivity = user.firstActivity
-      ? new Date(user.firstActivity).toLocaleDateString('ru-RU')
-      : '—';
-    const lastActivity = user.lastActivity
-      ? new Date(user.lastActivity).toLocaleString('ru-RU')
-      : '—';
-
-    message += `<b>${username}</b>\n`;
-    message += `ID: <code>${plainUserId}</code>\n`;
-    message += `Платформа: ${platform}\n`;
-    message += `Логин EN: <code>${login}</code>\n`;
-    message += `Первый вход: ${firstActivity}\n`;
-    message += `Последний: ${lastActivity}\n\n`;
-  }
-
-  // Кнопки навигации
-  const buttons = [];
-  const navButtons = [];
-
-  if (page > 0) {
-    navButtons.push({ text: '◀️ Назад', action: `admin_users_${page - 1}` });
-  }
-  if (page < totalPages - 1) {
-    navButtons.push({ text: 'Вперед ▶️', action: `admin_users_${page + 1}` });
-  }
-
-  if (navButtons.length > 0) {
-    buttons.push(navButtons);
-  }
-
-  buttons.push([{ text: '🏠 Главное меню', action: 'admin_back' }]);
-
-  const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, buttons);
-
-  await editTelegramMessage(message, {
-    chat_id: chatId,
-    message_id: messageId,
-    parse_mode: 'HTML',
-    ...keyboardOptions
-  });
-}
-
-/**
- * Показать меню управления модерацией
- */
-async function showModerationMenu(chatId, messageId) {
-  const status = adminConfig.moderationEnabled ? 'включена ✅' : 'выключена ❌';
-  const buttonText = adminConfig.moderationEnabled ? '❌ Выключить' : '✅ Включить';
-
-  const message =
-    `🔐 <b>Управление модерацией</b>\n\n` +
-    `Текущий статус: ${status}\n\n` +
-    `Когда модерация включена, доступ к боту имеют только пользователи из белого списка.`;
-
-  const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, [
-    [{ text: buttonText, action: 'moderation_toggle' }],
-    [{ text: '◀️ Назад', action: 'admin_back' }]
-  ]);
-
-  await editTelegramMessage(message, {
-    chat_id: chatId,
-    message_id: messageId,
-    parse_mode: 'HTML',
-    ...keyboardOptions
-  });
-}
-
-/**
- * Показать меню управления белым списком
- */
-async function showWhitelistMenu(chatId, messageId, page = 0) {
-  const ITEMS_PER_PAGE = 10;
-  const whitelist = adminConfig.whitelist || [];
-  const totalPages = Math.ceil(whitelist.length / ITEMS_PER_PAGE);
-  const start = page * ITEMS_PER_PAGE;
-  const end = start + ITEMS_PER_PAGE;
-  const pageItems = whitelist.slice(start, end);
-
-  let message = `📋 <b>Белый список</b>\n\n`;
-
-  if (whitelist.length === 0) {
-    message += 'Белый список пуст\n\n';
-    message += 'Нажмите "Добавить", чтобы добавить пользователя';
-  } else {
-    message += `Страница ${page + 1}/${totalPages}\n\n`;
-
-    for (let i = 0; i < pageItems.length; i++) {
-      const item = pageItems[i];
-      const globalIndex = start + i;
-      // Получаем логин из нового или старого формата
-      const login = item.login || (item.type === 'encounter' ? item.value : item.value);
-      message += `${globalIndex + 1}. 🎮 <code>${login}</code>\n`;
-    }
-  }
-
-  // Кнопки
-  const keyboardButtons = [];
-
-  // Кнопки удаления (только первые 5 на странице для экономии места)
-  const removeButtons = [];
-  for (let i = 0; i < Math.min(pageItems.length, 5); i++) {
-    const globalIndex = start + i;
-    removeButtons.push({
-      text: `🗑️ ${globalIndex + 1}`,
-      action: `whitelist_remove_${globalIndex}`
-    });
-  }
-
-  if (removeButtons.length > 0) {
-    // Разбиваем по 3 кнопки в ряд
-    for (let i = 0; i < removeButtons.length; i += 3) {
-      keyboardButtons.push(removeButtons.slice(i, i + 3));
-    }
-  }
-
-  // Навигация
-  const navButtons = [];
-  if (page > 0) {
-    navButtons.push({ text: '◀️', action: `admin_whitelist_${page - 1}` });
-  }
-  navButtons.push({ text: '➕ Добавить', action: 'whitelist_add' });
-  if (page < totalPages - 1) {
-    navButtons.push({ text: '▶️', action: `admin_whitelist_${page + 1}` });
-  }
-
-  keyboardButtons.push(navButtons);
-  keyboardButtons.push([{ text: '◀️ Назад', action: 'admin_back' }]);
-
-  const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, keyboardButtons);
-
-  await editTelegramMessage(message, {
-    chat_id: chatId,
-    message_id: messageId,
-    parse_mode: 'HTML',
-    ...keyboardOptions
-  });
-}
-
-/**
- * Обработка добавления в whitelist
- */
-async function handleWhitelistAdd(chatId, messageId) {
-  const message =
-    `➕ <b>Добавление в белый список</b>\n\n` +
-    `Отправьте Encounter логин пользователя:\n\n` +
-    `Пример: <code>player123</code>`;
-
-  const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, [
-    [{ text: '❌ Отмена', action: 'admin_whitelist_0' }]
-  ]);
-
-  await editTelegramMessage(message, {
-    chat_id: chatId,
-    message_id: messageId,
-    parse_mode: 'HTML',
-    ...keyboardOptions
-  });
-
-  // Устанавливаем состояние ожидания ввода
-  setUserState(TELEGRAM_PLATFORM, String(chatId), 'WAITING_FOR_WHITELIST_ENTRY');
-}
-
-/**
- * Обработка удаления из whitelist
- */
-async function showAdminMainMenu(chatId) {
-  const usersCount = userData.size;
-  const moderationStatus = adminConfig.moderationEnabled ? 'включена ✅' : 'выключена ❌';
-  const whitelistCount = adminConfig.whitelist ? adminConfig.whitelist.length : 0;
-
-  const message =
-    `👑 <b>Админ-панель</b>\n\n` +
-    `👥 Пользователей: ${usersCount}\n` +
-    `🔐 Модерация: ${moderationStatus}\n` +
-    `📋 Белый список: ${whitelistCount} записей`;
-
-  const keyboardOptions = createInlineKeyboard(TELEGRAM_PLATFORM, [
-    [{ text: '👥 Пользователи', action: 'admin_users_0' }],
-    [{ text: '🔐 Модерация', action: 'admin_moderation' }],
-    [{ text: '📋 Белый список', action: 'admin_whitelist_0' }]
-  ]);
-
-  try {
-    await sendMessage(TELEGRAM_PLATFORM, chatId, message, {
-      parse_mode: 'HTML',
-      ...keyboardOptions
-    });
-  } catch (error) {
-    logger.error('Ошибка отправки админ-меню:', error);
-    await sendMessage(TELEGRAM_PLATFORM, chatId, '❌ Ошибка отображения админ-панели');
-  }
-}
-
-async function handleWhitelistRemove(chatId, messageId, index, queryId = null) {
-  if (!adminConfig.whitelist || index < 0 || index >= adminConfig.whitelist.length) {
-    if (queryId) {
-      await answerTelegramCallback(queryId, {
-        text: '❌ Ошибка: запись не найдена',
-        show_alert: true
-      });
-    }
-    return;
-  }
-
-  // Удаляем запись
-  adminConfig.whitelist.splice(index, 1);
-  await saveAdminConfig();
-
-  // Обновляем меню
-  await showWhitelistMenu(chatId, messageId, 0);
-}
-
 let handlersRegistered = false;
 function registerTelegramHandlers(botInstance) {
   if (handlersRegistered) {
@@ -1326,7 +908,7 @@ function registerTelegramHandlers(botInstance) {
   }
   handlersRegistered = true;
 
-  const commandList = ['reset', 'test', 'admin', 'cancel', 'start'];
+  const commandList = Object.keys(COMMAND_HANDLERS);
 
   commandList.forEach(command => {
     const regex = new RegExp(`\\/${command}(?:\\s+(.*))?$`, 'i');
@@ -1372,9 +954,3 @@ module.exports = {
   handleTextMessage,
   sendOrUpdateMessage
 };
-
-
-
-
-
-

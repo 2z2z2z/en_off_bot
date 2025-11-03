@@ -111,6 +111,8 @@
 
 - `handleCallback` разделён на модульные обработчики (`queue/answer/batch/admin`) и унифицированную диспетчеризацию. Добавлен сервис `ready-state-handler`, в котором вынесены сценарии готового состояния, а `processBatchSend` перенесён в `router/services/batch-sender`.
 - `sendLevelTask` и `handleReadyStateInput` удалены из монолитного `router.js`, их логика покрывается новыми сервисами; админские callback'и работают через `createAdminCallbackHandler`.
+- Онбординг вынесен в `features/auth/setup-handler.js`; админский UI (панель, whitelist) перенесён в `features/admin/menu`. `router.js` теперь зависит от этих модулей через DI.
 - `classifyError` в `answer-delivery` переписан на таблицу условий с нормализацией сообщения и массивами паттернов.
 - `formatTaskMessage` декомпозирован на вспомогательные функции (`buildTaskHeader`, `buildTaskBody`, `buildHelpsBlock`), что снизило когнитивную сложность и упростило повторное использование.
+- Создана таблица команд (`COMMAND_HANDLERS`) вместо `switch`, зарегистрированные хендлеры Telegram строятся из неё. Контекст Telegram вынесен в `router/context/telegram.js`.
 - Все связанные тесты (`npm test`) и линтер (`npm run lint`) проходят без предупреждений.

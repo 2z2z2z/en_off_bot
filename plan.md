@@ -193,3 +193,7 @@
 - [x] Вынести загрузку и отправку задания из `sendLevelTask` `src/features/router.js` в специализированные хелперы
 - [x] Снизить сложность `classifyError` в `src/features/answer/answer-delivery.js` (реорганизовать маппинг типов ошибок)
 - [x] Декомпозировать `formatTaskMessage` в `src/presentation/message-formatter.js` (выделить подпроцессы генерации секций)
+- [x] Вынести onboarding/auth flow (`handleLoginInput`, `handlePasswordInput`, `handleGameUrlInput`) в `src/features/auth/setup-handler.js`
+- [x] Перенести админские функции (`showAdminMainMenu`, `showUsersList`, `showWhitelistMenu`, `handleWhitelist*`) в `src/features/admin/menu/*`
+- [x] Реорганизовать `handleCommand` через таблицу обработчиков вместо цепочки условий в `src/features/router.js`
+- [x] Переместить фабрики контекстов (`createTelegramContext`, `createTelegramCallbackContext`, VK аналоги) в `src/features/router/context/*`
