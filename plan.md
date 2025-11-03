@@ -141,12 +141,12 @@
       - Общие хелперы (`collectTaskFragments`, `collectHelps`, `splitMessageBody`) для reuse
     - [x] Вынести форматирование из бизнес-логики в presentation-слой
 
-- [ ] **Фаза 6: Whitelist и админка** (средний приоритет — см. [раздел 3.6](refactoring.md#36-админка-и-whitelist))
-  - [ ] Вынести whitelist в отдельный сервис `src/services/whitelist-service.js`:
-    - Отдельное хранилище (или таблица в SQLite)
-    - Поддержка ролей (admin, user)
-    - Валидация входных данных
-  - [ ] Перестроить админ-панель как отдельный flow:
+- [x] **Фаза 6: Whitelist и админка** (средний приоритет — см. [раздел 3.6](refactoring.md#36-админка-и-whitelist))
+  - [x] Вынести whitelist в отдельный сервис `src/entities/user/service/whitelist-service.js` (обёртка над `admin_config.json` + кэш):
+    - Инкапсулированное хранилище и синхронизация с Set-кэшем
+    - Поддержка ролей (admin, user) и метаданных (`addedBy`, `addedAt`)
+    - Валидация входных данных и защита от дубликатов
+  - [x] Перестроить админ-панель как отдельный flow:
     - Независимое состояние
     - Авторизация через whitelist
     - Использование presentation-слоя для форматирования

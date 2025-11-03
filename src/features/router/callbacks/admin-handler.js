@@ -48,15 +48,13 @@ async function handleAdminBack(deps, context) {
 }
 
 async function handleModerationToggle(deps, context) {
-  const { adminConfig, saveAdminConfig, showModerationMenu } = deps;
+  const { toggleModeration, adminConfig } = deps;
   const { chatId, messageId, queryId, answerCb } = context;
-  adminConfig.moderationEnabled = !adminConfig.moderationEnabled;
-  await saveAdminConfig();
-  await showModerationMenu(chatId, messageId);
+  await toggleModeration(chatId, messageId);
   if (queryId) {
     await answerCb({
       queryId,
-      text: adminConfig.moderationEnabled ? '✅ Модерация включена' : '❌ Модерация выключена'
+      text: adminConfig.moderationEnabled ? 'Moderation enabled' : 'Moderation disabled'
     });
   }
 }
@@ -70,15 +68,9 @@ async function handleWhitelistAddAction(deps, context) {
 
 async function handleWhitelistRemoveAction(deps, context, action) {
   const { handleWhitelistRemove } = deps;
-  const { chatId, messageId, queryId, answerCb } = context;
+  const { chatId, messageId, queryId } = context;
   const index = parseInt(action.split('_')[2], 10);
   await handleWhitelistRemove(chatId, messageId, index, queryId);
-  if (queryId) {
-    await answerCb({
-      queryId,
-      text: '🗑️ Удалено из белого списка'
-    });
-  }
 }
 
 function createAdminCallbackHandler(deps) {
@@ -117,11 +109,11 @@ function createAdminCallbackHandler(deps) {
           await answerCb({ queryId });
         }
       } catch (error) {
-        logger.error('Ошибка обработки admin callback:', error);
+        logger.error('Admin callback handling error:', error);
         if (queryId) {
           await answerCb({
             queryId,
-            text: '❌ Ошибка обработки команды',
+            text: 'Command processing error',
             show_alert: true
           });
         }

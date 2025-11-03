@@ -20,6 +20,7 @@ const {
 const { createAuthSetupHandler } = require('./auth/setup-handler');
 const { createAdminMenu, WHITELIST_INPUT_STATE } = require('./admin/menu');
 const { createTelegramContextFactory } = require('./router/context/telegram');
+const { createWhitelistService } = require('../entities/user/service/whitelist-service');
 const { createBatchSender } = require('./router/services/batch-sender');
 const { createQueueCallbackHandler } = require('./router/callbacks/queue-handler');
 const { createAnswerCallbackHandler } = require('./router/callbacks/answer-handler');
@@ -126,6 +127,11 @@ const deleteMessage = (platform, userId, messageId) =>
 const answerCallback = (platform, data = {}) => answerPlatformCallback(platform, data);
 const adminConfig = getAdminConfig();
 const whitelistCache = getWhitelistCache();
+const whitelistService = createWhitelistService({
+  adminConfig,
+  saveAdminConfig,
+  whitelistCache
+});
 
 const batchBuffer = createBatchBuffer({
   getPlatformUser,
@@ -180,7 +186,8 @@ const {
   showWhitelistMenu,
   handleWhitelistAdd,
   handleWhitelistRemove,
-  handleWhitelistManualEntry
+  handleWhitelistManualEntry,
+  toggleModeration
 } = createAdminMenu({
   logger,
   userData,
@@ -192,7 +199,8 @@ const {
   setUserState,
   clearUserState,
   answerTelegramCallback,
-  getTelegramPlatform: () => TELEGRAM_PLATFORM
+  getTelegramPlatform: () => TELEGRAM_PLATFORM,
+  whitelistService
 });
 const {
   createMessageContext: createTelegramContext,
@@ -211,7 +219,8 @@ const adminCallbackHandler = createAdminCallbackHandler({
   showUsersList,
   showWhitelistMenu,
   handleWhitelistAdd,
-  handleWhitelistRemove
+  handleWhitelistRemove,
+  toggleModeration
 });
 const { handleReadyStateInput } = createReadyStateHandler({
   handleStartCommand,
@@ -248,8 +257,8 @@ const { handleLoginInput, handlePasswordInput, handleGameUrlInput } = createAuth
   EncounterAPI
 });
 
-const ADMIN_ACTIONS = new Set(['admin_moderation','admin_back','moderation_toggle','whitelist_add']);
-const ADMIN_ACTION_PREFIXES = ['admin_users_','admin_whitelist_','whitelist_remove_'];
+const ADMIN_ACTIONS = new Set(['admin_moderation', 'admin_back', 'moderation_toggle', 'whitelist_add']);
+const ADMIN_ACTION_PREFIXES = ['admin_users_', 'admin_whitelist_', 'whitelist_remove_'];
 
 const isAdminAction = action =>
   ADMIN_ACTIONS.has(action) || ADMIN_ACTION_PREFIXES.some(prefix => action.startsWith(prefix));
@@ -269,7 +278,7 @@ async function handleAdminAction(data, callbackContext, answerCb) {
     if (queryId) {
       await answerCb({
         queryId,
-        text: '❌ У вас нет доступа',
+        text: 'Access denied',
         show_alert: true
       });
     }
@@ -400,13 +409,13 @@ async function handleAdminCommand(context) {
   const { platform, userId } = context;
 
   if (platform !== TELEGRAM_PLATFORM) {
-    await sendMessage(platform, userId, '❌ Админ-панель доступна только в Telegram');
+    await sendMessage(platform, userId, 'Admin panel is available only in Telegram');
     return;
   }
 
   const numericId = Number(userId);
   if (numericId !== ROOT_USER_ID) {
-    await sendMessage(platform, userId, '❌ У вас нет доступа к админ-панели');
+    await sendMessage(platform, userId, 'Access denied to admin panel');
     return;
   }
 
@@ -757,7 +766,7 @@ async function checkGameAccess(platform, userId) {
   }
 
   // Доступ запрещен - отправляем сообщение
-  await sendMessage(platform, userId, '🚫 Доступ к боту не разрешен. Свяжитесь с @seo2z');
+  await sendMessage(platform, userId, 'Access to the bot is not allowed. Contact @seo2z');
   return false;
 }
 
