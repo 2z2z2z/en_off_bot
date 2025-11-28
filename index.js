@@ -2911,6 +2911,12 @@ function registerTelegramHandlers() {
   });
 
   bot.on('callback_query', async (query) => {
+    // Игнорируем callback из групповых чатов
+    if (query.message?.chat?.type !== 'private') {
+      bot.answerCallbackQuery(query.id);
+      return;
+    }
+
     const context = createTelegramCallbackContext(query);
     try {
       await handleCallback(context);
@@ -2920,6 +2926,16 @@ function registerTelegramHandlers() {
   });
 
   bot.on('message', async (msg) => {
+    // Игнорируем групповые чаты
+    if (msg.chat?.type !== 'private') {
+      // Отвечаем только на команды
+      const text = msg.text || '';
+      if (typeof text === 'string' && text.startsWith('/')) {
+        bot.sendMessage(msg.chat.id, 'Бот работает только в личных сообщениях.');
+      }
+      return;
+    }
+
     const context = createTelegramContext(msg);
     try {
       await handleTextMessage(context);
