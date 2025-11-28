@@ -111,6 +111,16 @@ class TelegramAdapter extends PlatformAdapter {
     this.bot.on('message', (msg) => {
       if (!msg) return;
 
+      // Игнорируем групповые чаты, отвечая только на команды
+      const isGroupChat = msg.chat?.type !== 'private';
+      if (isGroupChat) {
+        const text = msg.text || '';
+        if (typeof text === 'string' && text.startsWith('/')) {
+          this.bot.sendMessage(msg.chat.id, 'Бот работает только в личных сообщениях.');
+        }
+        return;
+      }
+
       const text = msg.text || '';
       const isCommand = typeof text === 'string' && text.startsWith('/');
       const commandParts = isCommand ? text.trim().split(/\s+/) : [];
@@ -143,6 +153,13 @@ class TelegramAdapter extends PlatformAdapter {
     });
 
     this.bot.on('callback_query', (query) => {
+      // Игнорируем callback из групповых чатов
+      const isGroupChat = query.message?.chat?.type !== 'private';
+      if (isGroupChat) {
+        this.bot.answerCallbackQuery(query.id);
+        return;
+      }
+
       const event = {
         platform: this.name,
         rawUserId: query.from?.id || query.message?.chat?.id,
