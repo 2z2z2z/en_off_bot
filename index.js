@@ -1474,22 +1474,24 @@ function getAccumulationSlice(pending) {
   return slice;
 }
 
+/**
+ * Обрабатывает один entry из буфера pendingBurstAnswers.
+ * Результат обработки не возвращается - уведомления отправляются в sendAnswerToEncounter.
+ * @param {string} platform
+ * @param {string} userId
+ * @param {Object} entry
+ */
 async function processPendingEntry(platform, userId, entry) {
   if (!entry) {
     return;
   }
 
   try {
-    const result = await sendAnswerToEncounter(platform, userId, entry.answer, entry.progressMessageId);
-    if (entry.resolve) {
-      entry.resolve(result);
-    }
+    await sendAnswerToEncounter(platform, userId, entry.answer, entry.progressMessageId);
   } catch (error) {
     console.error('[burst] Ошибка обработки ответа из буфера:', error);
-    if (entry.resolve) {
-      entry.resolve(null);
-    }
   }
+  // entry.resolve больше не используется - результат не ожидается синхронно
 }
 
 async function drainAllPending(platform, userId, user) {
@@ -1563,23 +1565,36 @@ async function triggerBurstProcessing(platform, userId) {
   }
 }
 
+/**
+ * Добавляет ответ в буфер для обработки.
+ * Возвращается СРАЗУ, не блокируя VK Long Poll.
+ * Обработка происходит асинхронно через triggerBurstProcessing.
+ * @param {string} platform
+ * @param {string} userId
+ * @param {Object} user
+ * @param {string} answer
+ * @param {string|null} progressMessageId
+ * @returns {{ queued: boolean, answer: string }}
+ */
 async function queueAnswerForProcessing(platform, userId, user, answer, progressMessageId) {
   ensureBurstBuffer(user);
   const timestamp = Date.now();
 
-  return new Promise((resolve) => {
-    user.pendingBurstAnswers.push({
-      answer,
-      timestamp,
-      progressMessageId,
-      resolve
-    });
-
-    triggerBurstProcessing(platform, userId).catch((error) => {
-      console.error('[burst] Ошибка запуска обработки:', error);
-      resolve(null);
-    });
+  // Добавляем entry в буфер БЕЗ блокирующего ожидания
+  user.pendingBurstAnswers.push({
+    answer,
+    timestamp,
+    progressMessageId
+    // resolve больше не нужен - не ждём результат синхронно
   });
+
+  // Запускаем обработку асинхронно (не ждём завершения)
+  triggerBurstProcessing(platform, userId).catch((error) => {
+    console.error('[burst] Ошибка запуска обработки:', error);
+  });
+
+  // Возвращаем сразу - не блокируем VK Long Poll
+  return { queued: true, answer };
 }
 
 async function handleReadyStateInput(platform, userId, user, text, context) {
@@ -1731,9 +1746,12 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
 
   const progressMessage = await sendMessage(platform, userId, `⏳ Отправляю ответ "${text}"...`);
   const progressMessageId = progressMessage?.message_id ?? progressMessage?.conversation_message_id ?? null;
-  const result = await queueAnswerForProcessing(platform, userId, user, text, progressMessageId);
 
-  if (result && user.answerQueue.length > 0) {
+  // Не блокируем - queueAnswerForProcessing возвращается сразу
+  await queueAnswerForProcessing(platform, userId, user, text, progressMessageId);
+
+  // Запуск processAnswerQueue независимо от результата queueAnswerForProcessing
+  if (user.answerQueue.length > 0) {
     setTimeout(() => processAnswerQueue(platform, userId), 1200);
   }
 }
