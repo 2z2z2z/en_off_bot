@@ -1254,6 +1254,12 @@ async function handleTextMessage(context) {
     return;
   }
 
+  // Обработка кнопки "Начать" в VK как эквивалента /start
+  if (platform === VK_PLATFORM && messageText.trim() === 'Начать') {
+    await handleStartCommand(context);
+    return;
+  }
+
   const user = getPlatformUser(platform, userId);
 
   // Детект всплеска сообщений (оффлайн-пачка)
