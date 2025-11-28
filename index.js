@@ -2896,6 +2896,12 @@ function registerTelegramHandlers() {
   commandList.forEach((command) => {
     const regex = new RegExp(`\\/${command}(?:\\s+(.*))?$`, 'i');
     bot.onText(regex, async (msg, match) => {
+      // Игнорируем групповые чаты
+      if (msg.chat?.type !== 'private') {
+        bot.sendMessage(msg.chat.id, 'Бот работает только в личных сообщениях.');
+        return;
+      }
+
       const args = match && match[1] ? match[1].trim() : '';
       const context = createTelegramContext(msg, {
         commandName: command,
@@ -2926,13 +2932,8 @@ function registerTelegramHandlers() {
   });
 
   bot.on('message', async (msg) => {
-    // Игнорируем групповые чаты
+    // Игнорируем групповые чаты (ответ на команды отправляется в onText)
     if (msg.chat?.type !== 'private') {
-      // Отвечаем только на команды
-      const text = msg.text || '';
-      if (typeof text === 'string' && text.startsWith('/')) {
-        bot.sendMessage(msg.chat.id, 'Бот работает только в личных сообщениях.');
-      }
       return;
     }
 
