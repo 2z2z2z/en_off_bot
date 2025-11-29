@@ -2,6 +2,15 @@
 
 ---
 
+## Репозитории
+
+```
+D:\Projects\en-offline-bot\      # v1 (main) — старый код для справки
+D:\Projects\en-offline-bot-v2\   # v2 (ветка v2) — новый TypeScript код
+```
+
+---
+
 ## Архитектура
 
 ```
