@@ -7,6 +7,7 @@
 Полный рерайт бота на TypeScript. Telegram + VK, Encounter API, офлайн-очередь, буфер накопления.
 
 **Репозитории:**
+
 ```
 D:\Projects\en-offline-bot\      # v1 (main) — старый код для справки
 D:\Projects\en-offline-bot-v2\   # v2 (ветка v2) — новый код
@@ -57,7 +58,7 @@ src/
 
 ## Encounter API
 
-Справочник: https://world.en.cx/Addons.aspx?aid=18832
+Справочник: <https://world.en.cx/Addons.aspx?aid=18832>
 
 ## User Project Rules
 
@@ -122,7 +123,7 @@ Follow this systematic approach:
 - I'm not paid to write code, I'm paid to solve problems
 - Untested code is just a guess, not a solution
 
-#### The 30-Second Reality Check - Must answer YES to ALL:
+#### The 30-Second Reality Check - Must answer YES to ALL
 
 - Did I run/build the code?
 - Did I trigger the exact feature I changed?
@@ -130,14 +131,14 @@ Follow this systematic approach:
 - Did I check for error messages?
 - Would I bet $100 this works?
 
-#### Phrases to Avoid:
+#### Phrases to Avoid
 
 - "This should work now"
 - "I've fixed the issue" (especially 2nd+ time)
 - "Try it now" (without trying it myself)
 - "The logic is correct so..."
 
-#### Specific Test Requirements:
+#### Specific Test Requirements
 
 - UI Changes: Actually click the button/link/form
 - API Changes: Make the actual API call
@@ -145,11 +146,11 @@ Follow this systematic approach:
 - Logic Changes: Run the specific scenario
 - Config Changes: Restart and verify it loads
 
-#### The Embarrassment Test:
+#### The Embarrassment Test
 
 "If the user records trying this and it fails, will I feel embarrassed to see his face?"
 
-#### Time Reality:
+#### Time Reality
 
 - Time saved skipping tests: 30 seconds
 - Time wasted when it doesn't work: 30 minutes
