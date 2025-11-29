@@ -18,6 +18,8 @@ D:\Projects\en-offline-bot-v2\   # v2 (ветка v2) — новый код
 - `docs/02-development-rules.md` — архитектура и правила (как делать)
 - `docs/03-implementation-plan.md` — план реализации (чеклист)
 
+**Перед реализацией фичи** → читай docs/ и сверяйся с v1 кодом (`D:\Projects\en-offline-bot\`).
+
 ## Development Commands
 
 ```bash
@@ -81,6 +83,28 @@ You carefully provide accurate, factual, thoughtful answers. You are strict, lac
 - Leave NO todos, placeholders or missing pieces.
 - Document with JSDoc comments.
 - Check for linter errors often.
+- Explicit types for public functions.
+- Result<T,E> instead of throw for business errors.
+
+### Imports
+
+- Import only through index.ts (barrel exports).
+- `import { UserRepository } from '@/core/user'` ✓
+- `import { UserRepository } from '@/core/user/repository'` ✗
+
+### Forbidden
+
+- `any`, `@ts-ignore`, `as unknown as`
+- `console.log` (use pino)
+- Uncommitted TODO/FIXME comments
+
+### Commits
+
+```
+feat(scope): description
+fix(scope): description
+refactor(scope): description
+```
 
 ### Principles
 
