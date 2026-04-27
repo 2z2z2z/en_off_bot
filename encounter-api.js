@@ -28,7 +28,8 @@ class EncounterAPI {
       releaseQueue = resolve;
     });
 
-    EncounterAPI.requestQueues[domain] = queueTail.then(() => queueSlot);
+    const chainedTail = queueTail.then(() => queueSlot);
+    EncounterAPI.requestQueues[domain] = chainedTail;
 
     await queueTail;
 
@@ -51,7 +52,7 @@ class EncounterAPI {
 
       // После завершения цепочки возвращаемся к resolved promise,
       // чтобы избежать роста цепочки промисов в памяти
-      if (EncounterAPI.requestQueues[domain] === queueSlot) {
+      if (EncounterAPI.requestQueues[domain] === chainedTail) {
         EncounterAPI.requestQueues[domain] = Promise.resolve();
       }
     }
@@ -538,33 +539,38 @@ class EncounterAPI {
       // Отправляем ответ согласно документации API
       console.log(`📤 Отправляем ответ "${answer}" на уровень ${levelData.levelNumber} (LevelId: ${levelData.levelId})`);
 
-      // ВАЖНО: Проверяем уровень ПЕРЕД отправкой (защита от смены уровня)
-      console.log(`🔍 Проверка актуальности уровня перед отправкой...`);
-      const verifyState = await this.getGameState(gameId, authCookies, login, password);
-      if (verifyState.success && verifyState.data && verifyState.data.Level) {
-        const currentLevelId = verifyState.data.Level.LevelId;
-        const currentLevelNumber = verifyState.data.Level.Number;
+      // Проверка актуальности уровня перед отправкой.
+      // Если model уже получен в этом вызове (cache miss), второй getGameState не делаем -
+      // данные свежие, сравниваем с expectedLevelIdForCheck напрямую.
+      let verifyLevelId = currentLevelIdFromState;
+      let verifyLevelNumber = currentLevelNumberFromState;
 
-        console.log(`🔍 Финальная проверка: ожидаемый levelId=${expectedLevelIdForCheck}, текущий levelId=${currentLevelId}`);
-
-        // Проверяем изменение уровня относительно ОЖИДАЕМОГО уровня
-        if (currentLevelId !== expectedLevelIdForCheck) {
-          // Пытаемся определить номер ожидаемого уровня для сообщения
-          const expectedLevelNumber = (expectedLevelId === currentLevelIdFromState)
-            ? currentLevelNumberFromState
-            : '?';
-
-          console.log(`⚠️ ЗАЩИТА СРАБОТАЛА: Уровень изменился! Ожидался: ${expectedLevelNumber} (ID: ${expectedLevelIdForCheck}), текущий: ${currentLevelNumber} (ID: ${currentLevelId})`);
-          const error = new Error(`Уровень изменился (ожидался ${expectedLevelNumber}, текущий ${currentLevelNumber})`);
-          error.isLevelChanged = true;
-          error.oldLevel = expectedLevelNumber;
-          error.newLevel = currentLevelNumber;
-          error.answer = answer;
-          throw error;
+      if (!model) {
+        console.log(`🔍 Проверка актуальности уровня перед отправкой (данные из кеша)...`);
+        const verifyState = await this.getGameState(gameId, authCookies, login, password);
+        if (verifyState.success && verifyState.data && verifyState.data.Level) {
+          verifyLevelId = verifyState.data.Level.LevelId;
+          verifyLevelNumber = verifyState.data.Level.Number;
         }
-
-        console.log(`✅ Уровень актуален (${currentLevelNumber}, ID: ${currentLevelId}), продолжаем отправку`);
+      } else {
+        console.log(`✅ Используем свежие данные из cache miss - повторный getGameState не нужен`);
       }
+
+      if (verifyLevelId !== expectedLevelIdForCheck) {
+        const expectedLevelNumber = (expectedLevelId === currentLevelIdFromState)
+          ? currentLevelNumberFromState
+          : '?';
+
+        console.log(`⚠️ ЗАЩИТА СРАБОТАЛА: Уровень изменился! Ожидался: ${expectedLevelNumber} (ID: ${expectedLevelIdForCheck}), текущий: ${verifyLevelNumber} (ID: ${verifyLevelId})`);
+        const error = new Error(`Уровень изменился (ожидался ${expectedLevelNumber}, текущий ${verifyLevelNumber})`);
+        error.isLevelChanged = true;
+        error.oldLevel = expectedLevelNumber;
+        error.newLevel = verifyLevelNumber;
+        error.answer = answer;
+        throw error;
+      }
+
+      console.log(`✅ Уровень актуален (${verifyLevelNumber}, ID: ${verifyLevelId}), продолжаем отправку`);
 
       // Rate limiting: ждём минимум 1.2 сек с последнего запроса к этому домену
       await this._waitRateLimit();

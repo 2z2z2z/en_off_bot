@@ -12,67 +12,56 @@
  * @returns {Promise<Object>} - cookies после успешной авторизации
  */
 async function ensureAuthenticated(user, EncounterAPI, saveUserData) {
-  // Мьютекс авторизации: если уже идет авторизация, ждем её завершения
-  if (user.isAuthenticating && user.authPromise) {
+  // Если уже идёт авторизация - ждём её, не запуская параллельную
+  if (user.authPromise) {
     console.log(`⏳ Ожидание завершения авторизации для ${user.login}...`);
-    await user.authPromise;
-    console.log(`✅ Авторизация завершена, используем обновленные cookies`);
+    try {
+      await user.authPromise;
+    } catch (waitError) {
+      console.log(`⚠️ Параллельная авторизация для ${user.login} упала: ${waitError.message}. Пробуем заново.`);
+    }
+
+    if (user.authCookies && Object.keys(user.authCookies).length > 0) {
+      return user.authCookies;
+    }
+  }
+
+  if (user.authCookies && Object.keys(user.authCookies).length > 0) {
+    console.log(`🔑 Используем сохраненные cookies для ${user.login}`);
     return user.authCookies;
   }
 
-  if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
-    // Проверяем еще раз после ожидания
-    if (user.isAuthenticating && user.authPromise) {
-      await user.authPromise;
-      // После ожидания cookies должны быть
-      if (user.authCookies && Object.keys(user.authCookies).length > 0) {
-        console.log(`🔑 Используем cookies после ожидания авторизации`);
-        return user.authCookies;
-      }
+  console.log(`🔐 Нет cookies, выполняем авторизацию для ${user.login}...`);
+  console.log(`🎮 Данные игры: домен=${user.domain}, ID=${user.gameId}`);
+
+  // Атомарно (синхронный участок до await) фиксируем промис, чтобы конкурирующие вызовы видели его
+  const authPromise = (async () => {
+    const tempApi = new EncounterAPI(user.domain);
+    const authResult = await tempApi.authenticate(user.login, user.password);
+
+    if (!authResult.success) {
+      throw new Error(`Ошибка авторизации: ${authResult.message}`);
     }
 
-    // Если все еще нет cookies, запускаем авторизацию
-    if (!user.authCookies || Object.keys(user.authCookies).length === 0) {
-      console.log(`🔐 Нет cookies, выполняем авторизацию для ${user.login}...`);
-      console.log(`🎮 Данные игры: домен=${user.domain}, ID=${user.gameId}`);
+    user.authCookies = authResult.cookies;
+    await saveUserData();
+    console.log(`✅ Авторизация успешна для ${user.login}`);
+    return user.authCookies;
+  })();
 
-      // Устанавливаем флаг авторизации
-      user.isAuthenticating = true;
-      let resolveAuth, rejectAuth;
-      user.authPromise = new Promise((resolve, reject) => {
-        resolveAuth = resolve;
-        rejectAuth = reject;
-      });
+  user.authPromise = authPromise;
+  user.isAuthenticating = true;
 
-      try {
-        // Создаем временный API только для авторизации
-        const tempApi = new EncounterAPI(user.domain);
-        const authResult = await tempApi.authenticate(user.login, user.password);
+  // Подавляем unhandled rejection: если ожидающие ещё не успели подключить await,
+  // ошибка может всплыть как unhandled. Финальная await ниже всё равно её пробросит наверх.
+  authPromise.catch(() => {});
 
-        if (authResult.success) {
-          user.authCookies = authResult.cookies;
-          await saveUserData();
-          console.log(`✅ Авторизация успешна для ${user.login}`);
-          resolveAuth();
-          return user.authCookies;
-        } else {
-          const error = new Error(`Ошибка авторизации: ${authResult.message}`);
-          rejectAuth(error);
-          throw error;
-        }
-      } catch (authError) {
-        rejectAuth(authError);
-        throw authError;
-      } finally {
-        user.isAuthenticating = false;
-        user.authPromise = null;
-      }
-    }
-  } else {
-    console.log(`🔑 Используем сохраненные cookies для ${user.login}`);
+  try {
+    return await authPromise;
+  } finally {
+    user.isAuthenticating = false;
+    user.authPromise = null;
   }
-
-  return user.authCookies;
 }
 
 /**

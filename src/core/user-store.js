@@ -196,32 +196,53 @@ async function loadUserData(customPath) {
   }
 }
 
-async function saveUserData(customPath) {
-  const targetPath = customPath || dataFilePath;
-  try {
-    const data = {};
-    for (const [key, value] of userData.entries()) {
-      const sanitizedUser = { ...value };
-      delete sanitizedUser.isProcessingQueue;
-      delete sanitizedUser.isAuthenticating;
-      delete sanitizedUser.authPromise;
-      delete sanitizedUser.pendingQueueDecision;
-      delete sanitizedUser.pendingAnswerDecision;
-      delete sanitizedUser.accumulationTimer;  // Не сохраняем таймер
-      delete sanitizedUser.pendingBurstAnswers;
-      delete sanitizedUser.pendingBurstTimer;
-      delete sanitizedUser._burstProcessing;
-      delete sanitizedUser._burstProcessingRequested;
-      if (typeof sanitizedUser.password === 'string' && sanitizedUser.password) {
-        sanitizedUser.password = encryptSecret(sanitizedUser.password);
-      }
-      data[key] = sanitizedUser;
+async function _writeUserDataToFile(targetPath) {
+  const data = {};
+  for (const [key, value] of userData.entries()) {
+    const sanitizedUser = { ...value };
+    delete sanitizedUser.isProcessingQueue;
+    delete sanitizedUser.isAuthenticating;
+    delete sanitizedUser.authPromise;
+    delete sanitizedUser.accumulationTimer;
+    delete sanitizedUser.pendingBurstAnswers;
+    delete sanitizedUser.pendingBurstTimer;
+    delete sanitizedUser._burstProcessing;
+    delete sanitizedUser._burstProcessingRequested;
+    if (typeof sanitizedUser.password === 'string' && sanitizedUser.password) {
+      sanitizedUser.password = encryptSecret(sanitizedUser.password);
     }
-    await fs.writeJson(targetPath, data, { spaces: 2 });
-  } catch (error) {
-    console.error('Ошибка сохранения данных пользователей:', error);
-    throw error;
+    data[key] = sanitizedUser;
   }
+  const tmpPath = `${targetPath}.tmp`;
+  await fs.writeJson(tmpPath, data, { spaces: 2 });
+  await fs.move(tmpPath, targetPath, { overwrite: true });
+}
+
+let currentSave = Promise.resolve();
+let pendingSave = null;
+
+async function saveUserData(customPath) {
+  if (customPath) {
+    const next = currentSave.catch(() => {}).then(() => _writeUserDataToFile(customPath));
+    currentSave = next.catch(() => {});
+    return next;
+  }
+
+  if (pendingSave) {
+    return pendingSave;
+  }
+
+  pendingSave = currentSave.catch(() => {}).then(async () => {
+    pendingSave = null;
+    try {
+      await _writeUserDataToFile(dataFilePath);
+    } catch (error) {
+      console.error('Ошибка сохранения данных пользователей:', error);
+      throw error;
+    }
+  });
+  currentSave = pendingSave.catch(() => {});
+  return pendingSave;
 }
 
 function setDataFilePath(nextPath) {

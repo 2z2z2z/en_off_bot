@@ -1327,7 +1327,7 @@ async function handleWhitelistManualEntry(platform, userId, loginInput) {
   });
 
   await saveAdminConfig();
-  await sendMessage(platform, userId, `✅ Добавлено в белый список:\n🎮 <code>${login}</code>`, {
+  await sendMessage(platform, userId, `✅ Добавлено в белый список:\n🎮 <code>${escapeHtml(login)}</code>`, {
     parse_mode: 'HTML'
   });
 
@@ -2705,13 +2705,12 @@ async function checkAuthentication(login, password, domain = 'https://world.en.c
   try {
     const api = new EncounterAPI(domain);
     const result = await api.authenticate(login, password);
-    return result; // Возвращаем полный результат, а не только success
+    return result;
   } catch (error) {
     console.error('Ошибка проверки авторизации:', error.message);
-    // Если нет домена, принимаем базовую проверку
     return {
-      success: login.length > 0 && password.length > 0,
-      message: login.length > 0 && password.length > 0 ? 'Базовая проверка пройдена' : 'Логин или пароль не могут быть пустыми'
+      success: false,
+      message: `Не удалось связаться с Encounter: ${error.message}. Попробуйте позже.`
     };
   }
 }
@@ -2753,10 +2752,10 @@ async function showUsersList(chatId, messageId, page = 0) {
     const firstActivity = user.firstActivity ? new Date(user.firstActivity).toLocaleDateString('ru-RU') : '—';
     const lastActivity = user.lastActivity ? new Date(user.lastActivity).toLocaleString('ru-RU') : '—';
 
-    message += `<b>${username}</b>\n`;
-    message += `ID: <code>${plainUserId}</code>\n`;
-    message += `Платформа: ${platform}\n`;
-    message += `Логин EN: <code>${login}</code>\n`;
+    message += `<b>${escapeHtml(username)}</b>\n`;
+    message += `ID: <code>${escapeHtml(plainUserId)}</code>\n`;
+    message += `Платформа: ${escapeHtml(platform)}\n`;
+    message += `Логин EN: <code>${escapeHtml(login)}</code>\n`;
     message += `Первый вход: ${firstActivity}\n`;
     message += `Последний: ${lastActivity}\n\n`;
   }
@@ -2836,7 +2835,7 @@ async function showWhitelistMenu(chatId, messageId, page = 0) {
       const globalIndex = start + i;
       // Получаем логин из нового или старого формата
       const login = item.login || (item.type === 'encounter' ? item.value : item.value);
-      message += `${globalIndex + 1}. 🎮 <code>${login}</code>\n`;
+      message += `${globalIndex + 1}. 🎮 <code>${escapeHtml(login)}</code>\n`;
     }
   }
 
@@ -3025,34 +3024,31 @@ function registerTelegramHandlers() {
 async function startBot() {
   await loadUserData();
 
-  let clearedVkBuffers = 0;
-  let clearedVkAnswers = 0;
+  let clearedBuffers = 0;
+  let clearedAnswers = 0;
 
   for (const user of userData.values()) {
-    const isVkUser = user.platform === VK_PLATFORM;
     const hasStaleAccumulation = user.isAccumulatingAnswers === true &&
-      (user.accumulationTimer == null) &&
-      Array.isArray(user.accumulatedAnswers) &&
-      user.accumulatedAnswers.length > 0;
+      (user.accumulationTimer == null);
 
-    if (isVkUser && hasStaleAccumulation) {
-      const removed = user.accumulatedAnswers.length;
+    if (hasStaleAccumulation) {
+      const removed = Array.isArray(user.accumulatedAnswers) ? user.accumulatedAnswers.length : 0;
       user.accumulatedAnswers = [];
       user.isAccumulatingAnswers = false;
       user.accumulationStartLevel = null;
       user.accumulationTimer = null;
       user.recentMessageTimestamps = [];
 
-      clearedVkBuffers += 1;
-      clearedVkAnswers += removed;
+      clearedBuffers += 1;
+      clearedAnswers += removed;
 
-      console.log(`[vk] Очистка устаревшего буфера накопления для ${user.userId}: удалено ${removed} код(ов)`);
+      console.log(`[${user.platform}] Сброс устаревшего буфера накопления для ${user.userId}: удалено ${removed} код(ов)`);
     }
   }
 
-  if (clearedVkBuffers > 0) {
+  if (clearedBuffers > 0) {
     await saveUserData();
-    console.log(`🧹 Сброшено ${clearedVkBuffers} VK-буфер(ов) накопления (${clearedVkAnswers} кодов)`);
+    console.log(`🧹 Сброшено ${clearedBuffers} буфер(ов) накопления (${clearedAnswers} кодов)`);
   }
 
   await loadAdminConfig();

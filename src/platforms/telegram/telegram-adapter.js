@@ -145,7 +145,7 @@ class TelegramAdapter extends PlatformAdapter {
     this.bot.on('callback_query', (query) => {
       const event = {
         platform: this.name,
-        rawUserId: query.from?.id || query.message?.chat?.id,
+        rawUserId: query.message?.chat?.id ?? query.from?.id,
         type: PlatformEventType.CALLBACK,
         text: query.data || '',
         payload: query.data,

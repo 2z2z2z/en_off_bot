@@ -404,6 +404,7 @@ function createAnswerService(deps) {
     const user = getUserInfo(platform, userId);
     const queue = getAnswerQueue(platform, userId);
     const MAX_UNKNOWN_ERROR_ATTEMPTS = 3;
+    const MAX_AUTH_RETRY_ATTEMPTS = 2;
 
     if (!queue || queue.length === 0) {
       return;
@@ -604,10 +605,26 @@ function createAnswerService(deps) {
             queue.splice(i, 1);
             i--;
           } else if (isAuthError) {
-            console.log(`🔒 Проблема авторизации в очереди: ${error.message}`);
+            queueItem.authRetries = (queueItem.authRetries || 0) + 1;
+
+            if (queueItem.authRetries > MAX_AUTH_RETRY_ATTEMPTS) {
+              console.log(`🚫 Переавторизация для "${queueItem.answer}" не удалась после ${MAX_AUTH_RETRY_ATTEMPTS} попыток - удаляем из очереди`);
+              skipped++;
+
+              await pushProgress(
+                `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n🚫 Не удалось переавторизоваться для "${queueItem.answer}" - ответ удалён`,
+                { force: true }
+              );
+
+              queue.splice(i, 1);
+              i--;
+              continue;
+            }
+
+            console.log(`🔒 Проблема авторизации в очереди (попытка ${queueItem.authRetries}/${MAX_AUTH_RETRY_ATTEMPTS}): ${error.message}`);
 
             await pushProgress(
-              `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n🔒 Переавторизация для "${queueItem.answer}"...`,
+              `🔄 Обрабатываю очередь: ${processed}/${totalAnswers}\n🔒 Переавторизация для "${queueItem.answer}" (${queueItem.authRetries}/${MAX_AUTH_RETRY_ATTEMPTS})...`,
               { force: true }
             );
 
