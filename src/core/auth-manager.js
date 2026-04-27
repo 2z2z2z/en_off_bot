@@ -44,6 +44,9 @@ async function ensureAuthenticated(user, EncounterAPI, saveUserData) {
     }
 
     user.authCookies = authResult.cookies;
+    if (user.notifications) {
+      user.notifications.needsReauth = false;
+    }
     await saveUserData();
     console.log(`✅ Авторизация успешна для ${user.login}`);
     return user.authCookies;

@@ -12,6 +12,20 @@ const FALLBACK_PLATFORM = process.env.DEFAULT_PLATFORM || 'telegram';
 
 const userData = new Map();
 
+const createEmptyNotifications = () => ({
+  enabled: true,
+  lastPollAt: 0,
+  pollOffset: null,
+  needsReauth: false,
+  lastSeen: {
+    levelId: null,
+    helpNumbersSeen: [],
+    penaltyHelpNumbersSeen: [],
+    initialTimeoutSeconds: null,
+    timeoutBucketsSent: []
+  }
+});
+
 const createEmptyUser = (platform, userId) => {
   const now = Date.now();
   return {
@@ -29,21 +43,21 @@ const createEmptyUser = (platform, userId) => {
     authPromise: null,
     pendingQueueDecision: null,
     pendingAnswerDecision: null,
-    lastKnownLevel: null,  // Последний известный уровень { levelId, levelNumber, timestamp }
-    // Система накопления кодов для детекта оффлайн-пачки
-    recentMessageTimestamps: [],  // Временные метки последних сообщений для детекта всплеска
-    isAccumulatingAnswers: false,  // Флаг режима накопления
-    accumulatedAnswers: [],  // Буфер накопленных кодов { answer, timestamp, levelId, levelNumber }
-    accumulationStartLevel: null,  // Уровень на момент начала накопления { levelId, levelNumber }
-    accumulationTimer: null,  // ID таймера для завершения накопления
-    pendingBurstAnswers: [],  // Временный буфер сообщений до решения о пачке
-    pendingBurstTimer: null,  // Таймер ожидания перед отправкой одиночного ответа
+    lastKnownLevel: null,
+    recentMessageTimestamps: [],
+    isAccumulatingAnswers: false,
+    accumulatedAnswers: [],
+    accumulationStartLevel: null,
+    accumulationTimer: null,
+    pendingBurstAnswers: [],
+    pendingBurstTimer: null,
     _burstProcessing: false,
     _burstProcessingRequested: false,
     telegramUsername: null,
     telegramFirstName: null,
     firstActivity: now,
-    lastActivity: now
+    lastActivity: now,
+    notifications: createEmptyNotifications()
   };
 };
 
@@ -170,6 +184,22 @@ async function loadUserData(customPath) {
         if (!userInfo.hasOwnProperty('isAuthenticating')) {
           userInfo.isAuthenticating = false;
           migrationCount++;
+        }
+        if (!userInfo.notifications || typeof userInfo.notifications !== 'object') {
+          userInfo.notifications = createEmptyNotifications();
+          migrationCount++;
+        } else {
+          const defaults = createEmptyNotifications();
+          userInfo.notifications = {
+            ...defaults,
+            ...userInfo.notifications,
+            lastSeen: {
+              ...defaults.lastSeen,
+              ...(userInfo.notifications.lastSeen || {})
+            }
+          };
+          // Уйти с потенциально-stale needsReauth: после рестарта проверим заново
+          userInfo.notifications.needsReauth = false;
         }
 
         const storageKey = makeStorageKey(platform, userId);

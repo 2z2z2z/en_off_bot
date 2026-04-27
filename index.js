@@ -363,7 +363,7 @@ async function handleStartCommand(context) {
       `🌐 Домен: ${user.domain}\n` +
       `🎯 ID игры: ${user.gameId}\n\n` +
       'Теперь вы можете отправлять ответы!';
-    const keyboardOptions = createMainKeyboard(platform);
+    const keyboardOptions = createMainKeyboard(platform, user);
     await sendMessage(platform, userId, message, keyboardOptions);
   } else {
     setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
@@ -436,6 +436,24 @@ async function handleCallback(context) {
 
   if (!data) {
     await answerCb();
+    return;
+  }
+
+  if (data === 'history_filter_all' || data === 'history_filter_current') {
+    try {
+      const user = getPlatformUser(platform, userId);
+      const scope = data === 'history_filter_all' ? 'all' : 'current';
+      const editTargetMessageId = meta.messageId || null;
+      if (queryId) {
+        await answerCb({ queryId, text: '🔄 Обновляю...' });
+      }
+      await sendHistory(platform, userId, user, scope, { editTargetMessageId });
+    } catch (error) {
+      console.error('Ошибка фильтра истории:', error);
+      if (queryId) {
+        await answerCb({ queryId, text: '❌ Ошибка', show_alert: true });
+      }
+    }
     return;
   }
 
@@ -1425,7 +1443,7 @@ async function handleGameUrlInput(platform, userId, user, text) {
     `🔗 Тип ссылки: ${gameUrlResult.type}\n\n` +
     'Теперь вы можете отправлять ответы! Просто напишите ответ в чат.';
 
-  const keyboardOptions = createMainKeyboard(platform);
+  const keyboardOptions = createMainKeyboard(platform, user);
   await sendMessage(platform, userId, message, keyboardOptions);
 }
 
@@ -1610,90 +1628,7 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
   }
 
   if (text === 'Сектора') {
-    if (!(await checkGameAccess(platform, userId))) {
-      return;
-    }
-
-    const waitMsg = await sendMessage(platform, userId, '🔄 Получаю список секторов...');
-    try {
-      // Используем централизованную авторизацию с мьютексом
-      const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
-      const api = new EncounterAPI(user.domain, authCallback);
-
-      // Предварительная авторизация если нет cookies
-      await ensureAuthenticated(user, EncounterAPI, saveUserData);
-
-      let gameState;
-      try {
-        gameState = await api.getGameState(user.gameId, user.authCookies, user.login, user.password);
-      } catch (e) {
-        const msg = String(e.message || '').toLowerCase();
-        if (msg.includes('требуется авторизация') || msg.includes('сессия истекла')) {
-          const reauth = await api.authenticate(user.login, user.password);
-          if (!reauth.success) {
-            throw new Error(reauth.message || 'Не удалось авторизоваться');
-          }
-          user.authCookies = reauth.cookies;
-          await saveUserData();
-          gameState = await api.getGameState(user.gameId, user.authCookies);
-        } else {
-          throw e;
-        }
-      }
-
-      if (!gameState || !gameState.success) {
-        throw new Error('Не удалось получить состояние игры');
-      }
-
-      let model = gameState.data;
-      if (model.Event !== 0) {
-        if (model.Event === 16) {
-          gameState = await api.getGameState(user.gameId, user.authCookies);
-          if (!gameState.success || gameState.data.Event !== 0) {
-            await sendOrUpdateMessage(platform, userId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg?.message_id);
-            return;
-          }
-          model = gameState.data;
-        } else {
-          await sendOrUpdateMessage(platform, userId, '⚠️ Игра неактивна или недоступна сейчас.', waitMsg?.message_id);
-          return;
-        }
-      }
-
-      const level = model.Level;
-      if (!level) {
-        await sendOrUpdateMessage(platform, userId, '⚠️ Активный уровень не найден.', waitMsg?.message_id);
-        return;
-      }
-
-      const sectors = Array.isArray(level.Sectors) ? level.Sectors : [];
-      const totalRequired = Number(level.RequiredSectorsCount) || 0;
-      const passedCount = Number(level.PassedSectorsCount) || 0;
-      const leftToClose = Math.max(totalRequired - passedCount, 0);
-
-      const sectorsMessage = buildSectorsMessage(platform, {
-        sectors,
-        totalRequired,
-        totalCount: sectors.length,
-        passedCount,
-        leftToClose
-      });
-
-      if (waitMsg?.message_id) {
-        if (sectorsMessage.text.length <= 4000) {
-          await editMessage(platform, userId, waitMsg.message_id, sectorsMessage.text, sectorsMessage.options);
-        } else {
-          await editMessage(platform, userId, waitMsg.message_id, sectorsMessage.header, sectorsMessage.options);
-          for (const chunk of splitMessageBody(sectorsMessage.body, 4000)) {
-            await sendMessage(platform, userId, chunk, sectorsMessage.options);
-          }
-        }
-      } else {
-        await sendMessage(platform, userId, sectorsMessage.text, sectorsMessage.options);
-      }
-    } catch (error) {
-      await sendOrUpdateMessage(platform, userId, `❌ Не удалось получить сектора: ${error.message}`, waitMsg?.message_id);
-    }
+    await sendSectors(platform, userId, user);
     return;
   }
 
@@ -1737,6 +1672,21 @@ async function handleReadyStateInput(platform, userId, user, text, context) {
     await saveUserData();
     setUserState(platform, userId, STATES.WAITING_FOR_LOGIN);
     await sendMessage(platform, userId, 'Введите новый логин:');
+    return;
+  }
+
+  if (text === NOTIFY_ON_LABEL || text === NOTIFY_OFF_LABEL) {
+    await handleNotificationsToggle(platform, userId, user);
+    return;
+  }
+
+  if (text === '🎁 Бонусы') {
+    await sendBonuses(platform, userId, user);
+    return;
+  }
+
+  if (text === '📜 История') {
+    await sendHistory(platform, userId, user, 'current');
     return;
   }
 
@@ -1855,6 +1805,440 @@ async function sendLevelTask(platform, userId, user, formatted) {
   }
 }
 
+async function fetchGameInfoForUser(user) {
+  const authCallback = await createAuthCallback(user, EncounterAPI, saveUserData);
+  const api = new EncounterAPI(user.domain, authCallback);
+  await ensureAuthenticated(user, EncounterAPI, saveUserData);
+
+  const info = await api.getGameInfo(user.gameId, user.authCookies, user.login, user.password);
+  if (!info?.success) {
+    throw new Error(info?.error || 'Не удалось получить состояние игры');
+  }
+  return info.data;
+}
+
+// Унифицированная отправка builder'ной структуры { text, header, body, options }:
+// - редактирует ожидающее сообщение или editTargetMessageId, если задано
+// - режет body на чанки по 4000 символов
+// - extraOptions сливаются с message.options для первого сообщения (например, inline keyboard)
+async function respondWithMessage(platform, userId, message, { waitMessageId = null, extraOptions = null } = {}) {
+  const firstOptions = extraOptions ? { ...message.options, ...extraOptions } : message.options;
+
+  if (waitMessageId) {
+    if (message.text.length <= 4000) {
+      await editMessage(platform, userId, waitMessageId, message.text, firstOptions);
+    } else {
+      await editMessage(platform, userId, waitMessageId, message.header, firstOptions);
+      for (const chunk of splitMessageBody(message.body, 4000)) {
+        await sendMessage(platform, userId, chunk, message.options);
+      }
+    }
+    return;
+  }
+  await sendMessage(platform, userId, message.text, firstOptions);
+}
+
+async function sendSectors(platform, userId, user) {
+  if (!(await checkGameAccess(platform, userId))) {
+    return;
+  }
+
+  const waitMsg = await sendMessage(platform, userId, '🔄 Получаю список секторов...');
+
+  try {
+    const data = await fetchGameInfoForUser(user);
+    const level = data.level;
+
+    if (!level) {
+      await sendOrUpdateMessage(platform, userId, '⚠️ Активный уровень не найден.', waitMsg?.message_id);
+      return;
+    }
+
+    const sectors = Array.isArray(level.sectors) ? level.sectors : [];
+    const totalRequired = Number(level.sectorsTotal) || 0;
+    const passedCount = Number(level.sectorsPassed) || 0;
+    const leftToClose = Math.max(totalRequired - passedCount, 0);
+
+    const message = buildSectorsMessage(platform, {
+      sectors,
+      totalRequired,
+      totalCount: sectors.length,
+      passedCount,
+      leftToClose
+    });
+
+    await respondWithMessage(platform, userId, message, { waitMessageId: waitMsg?.message_id });
+  } catch (error) {
+    await sendOrUpdateMessage(platform, userId, `❌ Не удалось получить сектора: ${error.message}`, waitMsg?.message_id);
+  }
+}
+
+async function sendBonuses(platform, userId, user) {
+  if (!(await checkGameAccess(platform, userId))) {
+    return;
+  }
+
+  const waitMsg = await sendMessage(platform, userId, '🔄 Получаю бонусы текущего уровня...');
+
+  try {
+    const data = await fetchGameInfoForUser(user);
+    const level = data.level;
+
+    if (!level) {
+      await sendOrUpdateMessage(platform, userId, '⚠️ Активный уровень не найден.', waitMsg?.message_id);
+      return;
+    }
+
+    const message = buildBonusesMessage(platform, {
+      level,
+      bonuses: level.bonuses,
+      penaltyHelps: level.penaltyHelps
+    });
+
+    await respondWithMessage(platform, userId, message, { waitMessageId: waitMsg?.message_id });
+  } catch (error) {
+    await sendOrUpdateMessage(platform, userId, `❌ Не удалось получить бонусы: ${error.message}`, waitMsg?.message_id);
+  }
+}
+
+async function sendHistory(platform, userId, user, scope = 'current', { editTargetMessageId = null } = {}) {
+  if (!(await checkGameAccess(platform, userId))) {
+    return;
+  }
+
+  const waitMsg = editTargetMessageId
+    ? null
+    : await sendMessage(platform, userId, '🔄 Получаю историю ответов...');
+
+  try {
+    const data = await fetchGameInfoForUser(user);
+    const level = data.level;
+    const currentLevelNumber = level?.number ?? null;
+
+    const all = Array.isArray(data.mixedActions) ? data.mixedActions : [];
+    const filtered = scope === 'current' && currentLevelNumber != null
+      ? all.filter(a => {
+          const lvl = a?.LevelNumber ?? a?.Level?.Number;
+          return lvl == null || Number(lvl) === Number(currentLevelNumber);
+        })
+      : all;
+
+    const limited = filtered.slice(0, 30);
+
+    const message = buildHistoryMessage(platform, {
+      actions: limited,
+      levelNumber: currentLevelNumber,
+      scope
+    });
+
+    const toggleScope = scope === 'current' ? 'all' : 'current';
+    const toggleLabel = scope === 'current'
+      ? '🌐 Все уровни'
+      : `📍 Текущий уровень${currentLevelNumber ? ` №${currentLevelNumber}` : ''}`;
+    const inlineButtons = buildHistoryFilterButtons(platform, toggleScope, toggleLabel);
+
+    const targetMessageId = editTargetMessageId || waitMsg?.message_id || null;
+    await respondWithMessage(platform, userId, message, {
+      waitMessageId: targetMessageId,
+      extraOptions: inlineButtons
+    });
+  } catch (error) {
+    await sendOrUpdateMessage(platform, userId, `❌ Не удалось получить историю: ${error.message}`, waitMsg?.message_id);
+  }
+}
+
+function buildHistoryFilterButtons(platform, targetScope, label) {
+  const callbackKey = targetScope === 'all' ? 'history_filter_all' : 'history_filter_current';
+
+  if (platform === TELEGRAM_PLATFORM) {
+    return {
+      reply_markup: {
+        inline_keyboard: [[{ text: label, callback_data: callbackKey }]]
+      }
+    };
+  }
+
+  if (platform === VK_PLATFORM) {
+    return {
+      keyboard: {
+        type: 'inline',
+        buttons: [[{ label, payload: { action: callbackKey } }]]
+      }
+    };
+  }
+
+  return {};
+}
+
+async function handleNotificationsToggle(platform, userId, user) {
+  const notif = ensureNotificationsState(user);
+  notif.enabled = !notif.enabled;
+  await saveUserData();
+
+  const message = notif.enabled
+    ? '🔔 Уведомления включены. Будем сообщать о смене уровня, новых подсказках/штрафах и автопереходе.'
+    : '🔕 Уведомления выключены.';
+
+  const keyboardOptions = createMainKeyboard(platform, user);
+  await sendMessage(platform, userId, message, keyboardOptions);
+}
+
+// ============================================================================
+// Фоновый поллер: уведомления о смене уровня, подсказках, штрафах, автопереходе
+// ============================================================================
+
+const POLL_INTERVAL_MS = 60 * 1000;
+const POLL_TICK_MS = 5000;
+const POLL_MAX_USERS_PER_DOMAIN_PER_TICK = Math.max(1, Math.floor(POLL_TICK_MS / 1200));
+const POLL_RATE_LIMIT_RPS = 0.7;
+const TIMEOUT_BUCKETS = [600, 300, 60];
+
+let pollIntervalHandle = null;
+
+function ensureNotificationsState(user) {
+  if (!user.notifications || typeof user.notifications !== 'object') {
+    user.notifications = {
+      enabled: true,
+      lastPollAt: 0,
+      pollOffset: null,
+      needsReauth: false,
+      lastSeen: { levelId: null, helpNumbersSeen: [], penaltyHelpNumbersSeen: [], initialTimeoutSeconds: null, timeoutBucketsSent: [] }
+    };
+  }
+  if (!user.notifications.lastSeen || typeof user.notifications.lastSeen !== 'object') {
+    user.notifications.lastSeen = { levelId: null, helpNumbersSeen: [], penaltyHelpNumbersSeen: [], initialTimeoutSeconds: null, timeoutBucketsSent: [] };
+  }
+  if (!Array.isArray(user.notifications.lastSeen.helpNumbersSeen)) {
+    user.notifications.lastSeen.helpNumbersSeen = [];
+  }
+  if (!Array.isArray(user.notifications.lastSeen.penaltyHelpNumbersSeen)) {
+    user.notifications.lastSeen.penaltyHelpNumbersSeen = [];
+  }
+  if (!Array.isArray(user.notifications.lastSeen.timeoutBucketsSent)) {
+    user.notifications.lastSeen.timeoutBucketsSent = [];
+  }
+  return user.notifications;
+}
+
+function hashUserId(userId) {
+  const s = String(userId);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function getPollOffset(user) {
+  const notif = ensureNotificationsState(user);
+  if (notif.pollOffset == null) {
+    notif.pollOffset = hashUserId(user.userId) % POLL_INTERVAL_MS;
+  }
+  return notif.pollOffset;
+}
+
+function isUserPollable(user) {
+  if (!user || !user.gameId || !user.domain || !user.login || !user.password) return false;
+  if (!user.authCookies || Object.keys(user.authCookies).length === 0) return false;
+  if (user.pendingAnswerDecision || user.pendingQueueDecision) return false;
+  const notif = ensureNotificationsState(user);
+  if (notif.enabled === false) return false;
+  if (notif.needsReauth) return false;
+  return true;
+}
+
+function getUserDomainPollInterval(usersOnDomain) {
+  if (usersOnDomain <= 0) return POLL_INTERVAL_MS;
+  const baseRps = 1000 / POLL_INTERVAL_MS; // RPS на одного юзера
+  const totalRps = usersOnDomain * baseRps;
+  if (totalRps <= POLL_RATE_LIMIT_RPS) {
+    return POLL_INTERVAL_MS;
+  }
+  return Math.ceil(usersOnDomain / POLL_RATE_LIMIT_RPS) * 1000;
+}
+
+async function pollOneUser(user) {
+  const notif = ensureNotificationsState(user);
+  const platform = user.platform;
+  const userId = user.userId;
+
+  // Опрос идёт без authCallback - ошибки авторизации не должны блокировать ручные операции
+  const api = new EncounterAPI(user.domain);
+
+  let info;
+  try {
+    info = await api.getGameInfo(user.gameId, user.authCookies, null, null);
+  } catch (error) {
+    console.log(`[poll] ${platform}:${userId} ошибка получения состояния: ${error.message}`);
+    notif.lastPollAt = Date.now();
+    return;
+  }
+
+  if (!info?.success) {
+    const errMsg = String(info?.error || '').toLowerCase();
+    if (errMsg.includes('авторизаци') || errMsg.includes('сессия истекла')) {
+      notif.needsReauth = true;
+      console.log(`[poll] ${platform}:${userId} помечен как needsReauth`);
+    }
+    notif.lastPollAt = Date.now();
+    return;
+  }
+
+  const data = info.data;
+  const level = data.level;
+  if (!level) {
+    notif.lastPollAt = Date.now();
+    return;
+  }
+
+  const messages = [];
+
+  const seen = notif.lastSeen;
+  const isFirstObservation = seen.levelId == null;
+  const levelChanged = seen.levelId != null && seen.levelId !== level.id;
+
+  if (levelChanged) {
+    const totalSectors = Array.isArray(level.sectors) ? level.sectors.length : null;
+    const requiredSectors = level.sectorsTotal;
+    const sectorsLine = (totalSectors != null && requiredSectors != null)
+      ? `Секторов ${totalSectors}, обязательных ${requiredSectors}`
+      : (requiredSectors != null ? `Обязательных секторов: ${requiredSectors}` : '');
+    const text = `🆕 Новый уровень №${level.number ?? '?'}${level.name ? `: ${level.name}` : ''}${sectorsLine ? `\n${sectorsLine}` : ''}`;
+    messages.push(text);
+  }
+
+  if (isFirstObservation || levelChanged) {
+    seen.levelId = level.id;
+    seen.helpNumbersSeen = [];
+    seen.penaltyHelpNumbersSeen = [];
+    seen.initialTimeoutSeconds = level.timeoutSecondsRemain ?? null;
+    seen.timeoutBucketsSent = [];
+  }
+
+  if (!isFirstObservation) {
+    // Подсказки: новые открытые
+    if (Array.isArray(level.helps)) {
+      for (const help of level.helps) {
+        const num = help?.Number;
+        if (num == null) continue;
+        if (Number(help?.RemainSeconds ?? 0) > 0) continue;
+        const text = stripHtml(String(help?.HelpText || '')).trim();
+        if (!text) continue;
+        if (seen.helpNumbersSeen.includes(num)) continue;
+        seen.helpNumbersSeen.push(num);
+        const preview = text.slice(0, 200);
+        messages.push(`💡 Открылась подсказка №${num}\n${preview}`);
+      }
+    }
+
+    if (Array.isArray(level.penaltyHelps)) {
+      for (const pen of level.penaltyHelps) {
+        const num = pen?.Number;
+        if (num == null) continue;
+        if (Number(pen?.RemainSeconds ?? 0) > 0) continue;
+        const text = stripHtml(String(pen?.HelpText || '')).trim();
+        if (!text) continue;
+        if (seen.penaltyHelpNumbersSeen.includes(num)) continue;
+        seen.penaltyHelpNumbersSeen.push(num);
+        const preview = text.slice(0, 200);
+        const penaltyAmount = pen?.Penalty != null ? ` (штраф ${pen.Penalty})` : '';
+        messages.push(`🚨 Штраф №${num}${penaltyAmount}\n${preview}`);
+      }
+    }
+
+    // Автопереход
+    const initial = seen.initialTimeoutSeconds;
+    const remain = level.timeoutSecondsRemain;
+    if (initial != null && initial > 0 && remain != null && remain > 0) {
+      for (const bucket of TIMEOUT_BUCKETS) {
+        if (bucket >= initial) continue; // уровень изначально короче этого порога
+        if (seen.timeoutBucketsSent.includes(bucket)) continue;
+        if (remain <= bucket) {
+          seen.timeoutBucketsSent.push(bucket);
+          const human = bucket >= 60 ? `${Math.round(bucket / 60)} мин` : `${bucket} сек`;
+          messages.push(`⏰ До автоперехода ~${human} (уровень ${level.number ?? '?'})`);
+        }
+      }
+    }
+  }
+
+  notif.lastPollAt = Date.now();
+
+  for (const text of messages) {
+    try {
+      await sendMessage(platform, userId, text);
+    } catch (error) {
+      console.error(`[poll] не удалось отправить уведомление ${platform}:${userId}: ${error.message}`);
+    }
+  }
+
+  if (messages.length > 0 || levelChanged || isFirstObservation) {
+    await saveUserData();
+  }
+}
+
+async function pollAllUsers() {
+  const now = Date.now();
+
+  // Группируем юзеров по домену для расчёта адаптивного интервала
+  const byDomain = new Map();
+  for (const user of userData.values()) {
+    if (!isUserPollable(user)) continue;
+    const dom = user.domain;
+    if (!byDomain.has(dom)) byDomain.set(dom, []);
+    byDomain.get(dom).push(user);
+  }
+
+  for (const [domain, usersOnDomain] of byDomain) {
+    const domainInterval = getUserDomainPollInterval(usersOnDomain.length);
+
+    const due = usersOnDomain.filter(u => {
+      const notif = ensureNotificationsState(u);
+      const offset = getPollOffset(u);
+      const last = notif.lastPollAt || 0;
+      const next = last === 0 ? offset : last + domainInterval;
+      return now >= next;
+    });
+
+    if (due.length === 0) continue;
+
+    due.sort((a, b) => (a.notifications.lastPollAt || 0) - (b.notifications.lastPollAt || 0));
+    const batch = due.slice(0, POLL_MAX_USERS_PER_DOMAIN_PER_TICK);
+
+    for (const user of batch) {
+      try {
+        await pollOneUser(user);
+      } catch (error) {
+        console.error(`[poll] неожиданная ошибка для ${user.platform}:${user.userId}: ${error.message}`);
+      }
+    }
+  }
+
+  // Заодно подмести idle chat-limiters Telegram
+  if (telegramAdapter && typeof telegramAdapter.cleanupIdleChatLimiters === 'function') {
+    try {
+      telegramAdapter.cleanupIdleChatLimiters();
+    } catch (_) {
+      // безвредно
+    }
+  }
+}
+
+function startNotificationPoller() {
+  if (pollIntervalHandle) return;
+  pollIntervalHandle = setInterval(() => {
+    pollAllUsers().catch(error => console.error('[poll] tick error:', error.message));
+  }, POLL_TICK_MS);
+  console.log(`🔔 Поллер уведомлений запущен (тик ${POLL_TICK_MS}ms, интервал ${POLL_INTERVAL_MS}ms)`);
+}
+
+function stopNotificationPoller() {
+  if (pollIntervalHandle) {
+    clearInterval(pollIntervalHandle);
+    pollIntervalHandle = null;
+  }
+}
+
 // Админ-конфигурация
 let adminConfig = {
   moderationEnabled: false,
@@ -1955,18 +2339,27 @@ function rebuildWhitelistCache() {
 }
 
 // Создание клавиатуры для главного меню
-const MAIN_MENU_LAYOUT = [
-  ['Задание', 'Задание (формат)'],
-  ['Сектора'],
-  ['🔗 Сменить игру', '👤 Сменить авторизацию'],
-  ['🔄 Рестарт бота']
-];
+const NOTIFY_ON_LABEL = '🔔 Уведомления: ВКЛ';
+const NOTIFY_OFF_LABEL = '🔕 Уведомления: ВЫКЛ';
 
-function createMainKeyboard(platform) {
+function buildMenuLayout(user) {
+  const notifyLabel = user?.notifications?.enabled === false ? NOTIFY_OFF_LABEL : NOTIFY_ON_LABEL;
+  return [
+    ['Задание', 'Задание (формат)'],
+    ['Сектора', '🎁 Бонусы'],
+    ['📜 История', notifyLabel],
+    ['🔗 Сменить игру', '👤 Сменить авторизацию'],
+    ['🔄 Рестарт бота']
+  ];
+}
+
+function createMainKeyboard(platform, user = null) {
+  const layout = buildMenuLayout(user);
+
   if (platform === TELEGRAM_PLATFORM) {
     return {
       reply_markup: {
-        keyboard: MAIN_MENU_LAYOUT.map(row => [...row]),
+        keyboard: layout.map(row => [...row]),
         resize_keyboard: true,
         one_time_keyboard: false
       }
@@ -1974,7 +2367,7 @@ function createMainKeyboard(platform) {
   }
 
   if (platform === VK_PLATFORM) {
-    const buttons = MAIN_MENU_LAYOUT.map(row =>
+    const buttons = layout.map(row =>
       row.map(label => ({
         action: {
           type: 'text',
@@ -2019,17 +2412,23 @@ function buildSectorsMessage(platform, { sectors, totalRequired, totalCount, pas
     const nameRaw = s?.Name ?? '';
     const name = isTelegram ? escapeHtml(nameRaw) : nameRaw;
     const isAnswered = s?.IsAnswered === true;
-    const answerTextRaw = s?.Answer;
-    const answerText = extractSectorAnswerText(answerTextRaw);
+    const info = extractSectorAnswerInfo(s?.Answer);
+    const answerText = info.text;
+    const timeStr = formatTimeOfDay(info.uploadTime);
+    const loginStr = info.login || '';
+    const metaParts = [loginStr, timeStr].filter(Boolean);
+    const metaRaw = metaParts.join(', ');
 
     if (isTelegram) {
       const safeAnswer = answerText ? `<code>${escapeHtml(answerText)}</code>` : '<code>—</code>';
-      const condition = isAnswered ? `${safeAnswer} ✅` : '<i>...</i>';
+      const metaSuffix = isAnswered && metaRaw ? ` <i>(${escapeHtml(metaRaw)})</i>` : '';
+      const condition = isAnswered ? `${safeAnswer} ✅${metaSuffix}` : '<i>...</i>';
       return `#${order} (${name}) — ${condition}`;
     }
 
     const safeAnswer = answerText ? `«${answerText}»` : '—';
-    const condition = isAnswered ? `${safeAnswer} ✅` : '…';
+    const metaSuffix = isAnswered && metaRaw ? ` (${metaRaw})` : '';
+    const condition = isAnswered ? `${safeAnswer} ✅${metaSuffix}` : '…';
     return `#${order} (${name}) — ${condition}`;
   });
 
@@ -2050,6 +2449,176 @@ function buildSectorsMessage(platform, { sectors, totalRequired, totalCount, pas
     body,
     options
   };
+}
+
+function classifyBonus(bonus) {
+  if (bonus?.IsAnswered === true) return 'completed';
+  if (bonus?.Expired === true) return 'expired';
+  const secondsToStart = Number(bonus?.SecondsToStart ?? 0);
+  if (secondsToStart > 0) return 'pending';
+  return 'available';
+}
+
+function buildBonusesMessage(platform, { level, bonuses, penaltyHelps }) {
+  const isTelegram = platform === TELEGRAM_PLATFORM;
+  const options = isTelegram
+    ? { parse_mode: 'HTML', disable_web_page_preview: true }
+    : {};
+
+  const levelNumber = level?.number ?? level?.Number ?? '';
+  const list = Array.isArray(bonuses) ? bonuses : [];
+  const penalties = Array.isArray(penaltyHelps) ? penaltyHelps : [];
+
+  const groups = { completed: [], available: [], pending: [], expired: [] };
+  for (const b of list) {
+    groups[classifyBonus(b)].push(b);
+  }
+
+  const headerRaw = `🎁 Бонусы уровня №${levelNumber}`;
+  const header = isTelegram ? `<b>${escapeHtml(headerRaw)}</b>` : headerRaw;
+
+  if (list.length === 0 && penalties.length === 0) {
+    const text = `${header}\n\nНа этом уровне нет бонусов и штрафов.`;
+    return { text, header, body: '', options };
+  }
+
+  const summaryRaw =
+    `✅ ${groups.completed.length} взято · ` +
+    `🟢 ${groups.available.length} доступно · ` +
+    `⏳ ${groups.pending.length} ожидается · ` +
+    `🚫 ${groups.expired.length} просрочено`;
+  const summary = isTelegram ? escapeHtml(summaryRaw) : summaryRaw;
+
+  const renderName = (b) => {
+    const nameRaw = String(b?.Name || `Бонус №${b?.Number ?? '?'}`).trim();
+    return isTelegram ? `<b>${escapeHtml(nameRaw)}</b>` : nameRaw;
+  };
+
+  const renderAward = (b) => {
+    const award = b?.Award;
+    if (award == null || award === '' || award === 0) return '';
+    const text = `награда: ${award}`;
+    return isTelegram ? escapeHtml(text) : text;
+  };
+
+  const renderHelp = (b) => {
+    const helpRaw = String(b?.Help || '').trim();
+    if (!helpRaw) return '';
+    const stripped = stripHtml(helpRaw).trim();
+    if (!stripped) return '';
+    return isTelegram ? `<i>${escapeHtml(stripped)}</i>` : stripped;
+  };
+
+  const sections = [];
+
+  if (groups.completed.length > 0) {
+    const lines = groups.completed.map(b => {
+      const name = renderName(b);
+      const award = renderAward(b);
+      const time = formatTimeOfDay(b?.AwardTime);
+      const meta = [award, time ? (isTelegram ? escapeHtml(`в ${time}`) : `в ${time}`) : ''].filter(Boolean).join(' · ');
+      return `✅ ${name}${meta ? ` — ${meta}` : ''}`;
+    });
+    const title = isTelegram ? '<b>Взятые</b>' : 'Взятые:';
+    sections.push(`${title}\n${lines.join('\n')}`);
+  }
+
+  if (groups.available.length > 0) {
+    const lines = groups.available.map(b => {
+      const name = renderName(b);
+      const award = renderAward(b);
+      const help = renderHelp(b);
+      const secondsLeft = Number(b?.SecondsLeft ?? 0);
+      const remain = secondsLeft > 0 ? formatRemain(secondsLeft) : '';
+      const remainStr = remain ? (isTelegram ? escapeHtml(`осталось ${remain}`) : `осталось ${remain}`) : '';
+      const metaParts = [award, remainStr].filter(Boolean);
+      const meta = metaParts.length > 0 ? ` — ${metaParts.join(' · ')}` : '';
+      return `🟢 ${name}${meta}${help ? `\n   ${help}` : ''}`;
+    });
+    const title = isTelegram ? '<b>Доступны</b>' : 'Доступны:';
+    sections.push(`${title}\n${lines.join('\n')}`);
+  }
+
+  if (groups.pending.length > 0) {
+    const lines = groups.pending.map(b => {
+      const name = renderName(b);
+      const award = renderAward(b);
+      const seconds = Number(b?.SecondsToStart ?? 0);
+      const start = seconds > 0 ? formatRemain(seconds) : '';
+      const startStr = start ? (isTelegram ? escapeHtml(`через ${start}`) : `через ${start}`) : '';
+      const metaParts = [award, startStr].filter(Boolean);
+      const meta = metaParts.length > 0 ? ` — ${metaParts.join(' · ')}` : '';
+      return `⏳ ${name}${meta}`;
+    });
+    const title = isTelegram ? '<b>Откроются позже</b>' : 'Откроются позже:';
+    sections.push(`${title}\n${lines.join('\n')}`);
+  }
+
+  if (groups.expired.length > 0) {
+    const lines = groups.expired.map(b => `🚫 ${renderName(b)}`);
+    const title = isTelegram ? '<b>Просрочены</b>' : 'Просрочены:';
+    sections.push(`${title}\n${lines.join('\n')}`);
+  }
+
+  if (penalties.length > 0) {
+    const lines = penalties.map(p => {
+      const number = p?.Number ?? '?';
+      const helpRaw = stripHtml(String(p?.HelpText || '')).trim();
+      const remain = Number(p?.RemainSeconds ?? 0);
+      const remainStr = remain > 0
+        ? (isTelegram ? `<i>(${escapeHtml(`до открытия ${formatRemain(remain)}`)})</i>` : `(до открытия ${formatRemain(remain)})`)
+        : '';
+      const penalty = p?.Penalty != null ? `штраф ${p.Penalty}` : '';
+      const metaPenalty = penalty ? (isTelegram ? escapeHtml(penalty) : penalty) : '';
+      const headLine = `🚨 №${number}${metaPenalty ? ` (${metaPenalty})` : ''} ${remainStr}`.trim();
+      const body = helpRaw ? (isTelegram ? `\n   ${escapeHtml(helpRaw)}` : `\n   ${helpRaw}`) : '';
+      return `${headLine}${body}`;
+    });
+    const title = isTelegram ? '<b>Штрафы</b>' : 'Штрафы:';
+    sections.push(`${title}\n${lines.join('\n')}`);
+  }
+
+  const body = sections.join('\n\n');
+  const text = `${header}\n\n${summary}\n\n${body}`;
+  return { text, header, body, options };
+}
+
+function buildHistoryMessage(platform, { actions, levelNumber, scope }) {
+  const isTelegram = platform === TELEGRAM_PLATFORM;
+  const options = isTelegram
+    ? { parse_mode: 'HTML', disable_web_page_preview: true }
+    : {};
+
+  const list = Array.isArray(actions) ? actions : [];
+  const scopeLabel = scope === 'current'
+    ? `текущий уровень${levelNumber ? ` №${levelNumber}` : ''}`
+    : 'все уровни';
+  const headerRaw = `📜 История ответов — ${scopeLabel}`;
+  const header = isTelegram ? `<b>${escapeHtml(headerRaw)}</b>` : headerRaw;
+
+  if (list.length === 0) {
+    const text = `${header}\n\nЗаписей не найдено.`;
+    return { text, header, body: '', options };
+  }
+
+  const lines = list.map(a => {
+    const time = formatDateTimeOfDay(a?.EnterDateTime ?? a?.AnswerDateTime);
+    const loginRaw = String(a?.Login || '').trim();
+    const answerRaw = String(a?.Answer || '').trim();
+    const correct = a?.IsCorrect === true;
+    const lvl = a?.LevelNumber ?? a?.Level?.Number;
+    const lvlSuffix = scope !== 'current' && lvl != null ? ` · ур.${lvl}` : '';
+    const mark = correct ? '✓' : '✗';
+
+    if (isTelegram) {
+      return `${escapeHtml(time)} · ${escapeHtml(loginRaw || '?')} · <code>${escapeHtml(answerRaw)}</code> ${mark}${escapeHtml(lvlSuffix)}`;
+    }
+    return `${time} · ${loginRaw || '?'} · "${answerRaw}" ${mark}${lvlSuffix}`;
+  });
+
+  const body = lines.join('\n');
+  const text = `${header}\n\n${body}`;
+  return { text, header, body, options };
 }
 
 function collectTaskFragments(tasks, { formatted = false } = {}) {
@@ -2492,6 +3061,59 @@ function extractSectorAnswerText(rawAnswer) {
   } catch (_) {
     return '';
   }
+}
+
+// Расширенная информация о закрытом секторе: текст + автор + время
+function extractSectorAnswerInfo(rawAnswer) {
+  const text = extractSectorAnswerText(rawAnswer);
+  let login = null;
+  let uploadTime = null;
+
+  if (rawAnswer && typeof rawAnswer === 'object' && !Array.isArray(rawAnswer)) {
+    if (typeof rawAnswer.Login === 'string' && rawAnswer.Login.trim()) {
+      login = rawAnswer.Login.trim();
+    }
+    if (rawAnswer.UploadTime != null) {
+      uploadTime = rawAnswer.UploadTime;
+    } else if (rawAnswer.AnswerDateTime != null) {
+      uploadTime = rawAnswer.AnswerDateTime;
+    } else if (rawAnswer.EnterDateTime != null) {
+      uploadTime = rawAnswer.EnterDateTime;
+    }
+  }
+
+  return { text, login, uploadTime };
+}
+
+// Парсит EN-формат "/Date(1234567890000)/" или ISO-строку или число; возвращает Date или null
+function parseEncounterDate(raw) {
+  if (raw == null) return null;
+  if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw;
+  if (typeof raw === 'number') {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const s = String(raw).trim();
+  if (!s) return null;
+  const m = s.match(/\/Date\((-?\d+)(?:[+-]\d{4})?\)\//);
+  if (m) {
+    const d = new Date(Number(m[1]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatTimeOfDay(raw) {
+  const d = parseEncounterDate(raw);
+  if (!d) return '';
+  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDateTimeOfDay(raw) {
+  const d = parseEncounterDate(raw);
+  if (!d) return '';
+  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 /**
@@ -3064,15 +3686,20 @@ async function startBot() {
   });
 
   registerTransport(TELEGRAM_PLATFORM, {
-    sendMessage: (userId, text, options = {}) => bot.sendMessage(userId, text, options),
-    editMessage: (userId, messageId, text, options = {}) => bot.editMessageText(text, {
-      chat_id: userId,
-      message_id: messageId,
-      ...(options || {})
-    }),
-    deleteMessage: (userId, messageId) => bot.deleteMessage(userId, messageId),
-    sendTyping: (userId) => bot.sendChatAction ? bot.sendChatAction(userId, 'typing') : Promise.resolve(),
-    answerCallback: ({ queryId, ...options }) => bot.answerCallbackQuery(queryId, options)
+    sendMessage: (userId, text, options = {}) =>
+      telegramAdapter._scheduleSend(userId, () => bot.sendMessage(userId, text, options)),
+    editMessage: (userId, messageId, text, options = {}) =>
+      telegramAdapter._scheduleSend(userId, () => bot.editMessageText(text, {
+        chat_id: userId,
+        message_id: messageId,
+        ...(options || {})
+      })),
+    deleteMessage: (userId, messageId) =>
+      telegramAdapter._scheduleSend(userId, () => bot.deleteMessage(userId, messageId)),
+    sendTyping: (userId) =>
+      telegramAdapter._scheduleSend(userId, () => (bot.sendChatAction ? bot.sendChatAction(userId, 'typing') : Promise.resolve())),
+    answerCallback: ({ queryId, ...options }) =>
+      bot.answerCallbackQuery(queryId, options)
   });
 
   ({
@@ -3251,6 +3878,8 @@ async function startBot() {
   } else {
     console.log('ℹ️ VK платформа отключена (нет VK_GROUP_TOKEN или VK_GROUP_ID)');
   }
+
+  startNotificationPoller();
 }
 
 startBot();
@@ -3258,6 +3887,7 @@ startBot();
 // Грациозное завершение работы
 process.on('SIGINT', async () => {
   console.log('\n🛑 Остановка бота...');
+  stopNotificationPoller();
   await saveUserData();
   await telegramAdapter.stop().catch(() => {});
   if (vkAdapterInstance) {
@@ -3268,6 +3898,7 @@ process.on('SIGINT', async () => {
 
 process.on('SIGTERM', async () => {
   console.log('\n🛑 Остановка бота...');
+  stopNotificationPoller();
   await saveUserData();
   await telegramAdapter.stop().catch(() => {});
   if (vkAdapterInstance) {

@@ -1,7 +1,10 @@
 'use strict';
 
 const TelegramBot = require('node-telegram-bot-api');
+const Bottleneck = require('bottleneck');
 const { PlatformAdapter, PlatformEventType, OutboundMessageType } = require('../platform-adapter');
+
+const CHAT_LIMITER_IDLE_MS = 5 * 60 * 1000;
 
 class TelegramAdapter extends PlatformAdapter {
   /**
@@ -21,6 +24,41 @@ class TelegramAdapter extends PlatformAdapter {
     this.token = token;
     this.botOptions = botOptions || { polling: true };
     this.bot = null;
+
+    // Лимит API Telegram: ~30 сообщений/сек глобально
+    this.globalLimiter = new Bottleneck({ maxConcurrent: 30, minTime: 35 });
+    // На один чат: ~1 сообщение/сек (per-chat sub-limiter)
+    this.chatLimiters = new Map(); // chatId -> { limiter, lastUsedAt }
+  }
+
+  _getChatLimiter(chatId) {
+    const key = String(chatId);
+    let entry = this.chatLimiters.get(key);
+    if (!entry) {
+      entry = {
+        limiter: new Bottleneck({ maxConcurrent: 1, minTime: 1000 }),
+        lastUsedAt: Date.now()
+      };
+      this.chatLimiters.set(key, entry);
+    } else {
+      entry.lastUsedAt = Date.now();
+    }
+    return entry.limiter;
+  }
+
+  cleanupIdleChatLimiters() {
+    const now = Date.now();
+    for (const [chatId, entry] of this.chatLimiters) {
+      const idle = now - entry.lastUsedAt;
+      if (idle > CHAT_LIMITER_IDLE_MS && entry.limiter.empty?.() !== false) {
+        this.chatLimiters.delete(chatId);
+      }
+    }
+  }
+
+  async _scheduleSend(chatId, fn) {
+    const chatLimiter = this._getChatLimiter(chatId);
+    return this.globalLimiter.schedule(() => chatLimiter.schedule(fn));
   }
 
   async start() {
@@ -74,12 +112,7 @@ class TelegramAdapter extends PlatformAdapter {
 
     const options = this._buildSendOptions(message);
 
-    switch (message.type) {
-      case OutboundMessageType.TEXT:
-      case OutboundMessageType.REPLY:
-      default:
-        return this.bot.sendMessage(chatId, message.text, options);
-    }
+    return this._scheduleSend(chatId, () => this.bot.sendMessage(chatId, message.text, options));
   }
 
   async updateMessage(context, message) {
@@ -95,16 +128,11 @@ class TelegramAdapter extends PlatformAdapter {
 
     const options = this._buildSendOptions(message);
 
-    switch (message.type) {
-      case OutboundMessageType.EDIT:
-      case OutboundMessageType.TEXT:
-      default:
-        return this.bot.editMessageText(message.text, {
-          chat_id: chatId,
-          message_id: messageId,
-          ...options
-        });
-    }
+    return this._scheduleSend(chatId, () => this.bot.editMessageText(message.text, {
+      chat_id: chatId,
+      message_id: messageId,
+      ...options
+    }));
   }
 
   _bindListeners() {

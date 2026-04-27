@@ -740,6 +740,7 @@ class EncounterAPI {
 
       if (gameState.success) {
         const model = gameState.data;
+        const lvl = model.Level || null;
         return {
           success: true,
           data: {
@@ -747,16 +748,25 @@ class EncounterAPI {
             name: model.GameTitle || `Игра #${gameId}`,
             number: model.GameNumber,
             status: model.Event === 0 ? 'active' : 'inactive',
-            level: model.Level ? {
-              id: model.Level.LevelId,
-              name: model.Level.Name,
-              number: model.Level.Number,
-              isPassed: model.Level.IsPassed,
-              sectorsTotal: model.Level.RequiredSectorsCount,
-              sectorsPassed: model.Level.PassedSectorsCount
+            level: lvl ? {
+              id: lvl.LevelId,
+              name: lvl.Name,
+              number: lvl.Number,
+              isPassed: lvl.IsPassed,
+              sectorsTotal: lvl.RequiredSectorsCount,
+              sectorsPassed: lvl.PassedSectorsCount,
+              sectors: Array.isArray(lvl.Sectors) ? lvl.Sectors : [],
+              bonuses: Array.isArray(lvl.Bonuses) ? lvl.Bonuses : [],
+              helps: Array.isArray(lvl.Helps) ? lvl.Helps : [],
+              penaltyHelps: Array.isArray(lvl.PenaltyHelps) ? lvl.PenaltyHelps : [],
+              timeoutSecondsRemain: lvl.TimeoutSecondsRemain ?? null,
+              autoPassSeconds: lvl.AutoPassSeconds ?? null,
+              hasAnswerBlockRule: lvl.HasAnswerBlockRule === true,
+              blockDuration: lvl.BlockDuration ?? 0
             } : null,
             team: model.TeamName,
-            login: model.Login
+            login: model.Login,
+            mixedActions: Array.isArray(model.MixedActions) ? model.MixedActions : []
           }
         };
       } else {
