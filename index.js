@@ -2217,10 +2217,66 @@ function splitMessageBody(text, maxLength) {
     return [];
   }
 
+  const segments = String(text).split('\n\n');
   const chunks = [];
-  for (let i = 0; i < text.length; i += maxLength) {
-    chunks.push(text.slice(i, i + maxLength));
+  let current = '';
+
+  const flush = () => {
+    if (current.length > 0) {
+      chunks.push(current);
+      current = '';
+    }
+  };
+
+  const wrapMatch = segment => {
+    const m = segment.match(/^(<blockquote(?:\s[^>]*)?>)([\s\S]*)(<\/blockquote>)$/i);
+    if (m) {
+      return { open: m[1], inner: m[2], close: m[3] };
+    }
+    return null;
+  };
+
+  const pushHardSplit = (segment) => {
+    const wrap = wrapMatch(segment);
+    const open = wrap ? wrap.open : '';
+    const close = wrap ? wrap.close : '';
+    const overhead = open.length + close.length;
+    const innerLimit = Math.max(64, maxLength - overhead);
+    let remaining = wrap ? wrap.inner : segment;
+
+    while (remaining.length + overhead > maxLength) {
+      const slice = remaining.slice(0, innerLimit);
+      const breakAt = Math.max(slice.lastIndexOf('\n'), slice.lastIndexOf(' '));
+      const cut = breakAt > innerLimit * 0.5 ? breakAt : innerLimit;
+      chunks.push(`${open}${remaining.slice(0, cut)}${close}`);
+      remaining = remaining.slice(cut).replace(/^\s+/, '');
+    }
+    if (remaining.length > 0) {
+      current = `${open}${remaining}${close}`;
+    }
+  };
+
+  for (const segment of segments) {
+    if (segment.length === 0) {
+      continue;
+    }
+
+    const candidate = current.length === 0 ? segment : `${current}\n\n${segment}`;
+    if (candidate.length <= maxLength) {
+      current = candidate;
+      continue;
+    }
+
+    flush();
+
+    if (segment.length <= maxLength) {
+      current = segment;
+    } else {
+      pushHardSplit(segment);
+    }
   }
+
+  flush();
   return chunks;
 }
 
